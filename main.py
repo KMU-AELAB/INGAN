@@ -1,12 +1,12 @@
 from config import Config
 
-from agent.multi_gpu_sample import Sample
+from agent.ingan_agent import InganAgent
 
 
 def main():
     config = Config()
 
-    agent = Sample(config)
+    agent = InganAgent(config)
     agent.run()
 
 

@@ -12,7 +12,7 @@ from tensorboardX import SummaryWriter
 
 from graph.model.sample_model import SampleModel as Model
 from graph.loss.sample_loss import SampleLoss as Loss
-from data.sample_dataset import SampleDataset
+from data.discriminator_dataset import SampleDataset
 
 from utils.metrics import AverageMeter
 from utils.train_utils import free, frozen, set_logger, count_model_prameters
@@ -21,11 +21,18 @@ from utils.train_utils import free, frozen, set_logger, count_model_prameters
 cudnn.benchmark = True
 
 
-class Sample(object):
+class InganAgent(object):
     def __init__(self, config):
         self.config = config
         self.flag_gan = False
         self.train_count = 0
+
+        self.torchvision_transform = transforms.Compose([
+            transforms.Resize((1024, 512)),
+            transforms.TenCrop((1024, 512)),
+            transforms.ColorJitter(brightness=(0.8, 1.2)),
+            transforms.ToTensor(),
+        ])
 
         self.pretraining_step_size = self.config.pretraining_step_size
         self.batch_size = self.config.batch_size
