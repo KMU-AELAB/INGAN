@@ -128,6 +128,22 @@ class DiscriminatorAgent(object):
         except KeyboardInterrupt:
             print("You have entered CTRL+C.. Wait to finalize")
 
+    def record_image(self, X, X1, X2, Xf):
+        self.summary_writer.add_image('origin/img 1', X[0], self.epoch)
+        self.summary_writer.add_image('origin/img 2', X[1], self.epoch)
+
+        self.summary_writer.add_image('variation_1/img 1', X1[0], self.epoch)
+        self.summary_writer.add_image('variation_1/img 2', X1[1], self.epoch)
+
+        self.summary_writer.add_image('variation_2/img 1', X2[0], self.epoch)
+        self.summary_writer.add_image('variation_2/img 2', X2[1], self.epoch)
+
+        self.summary_writer.add_image('negative/img 1', Xf[0], self.epoch)
+        self.summary_writer.add_image('negative/img 2', Xf[1], self.epoch)
+
+
+
+
     def train(self):
         for _ in range(self.config.epoch):
             self.epoch += 1
@@ -160,11 +176,36 @@ class DiscriminatorAgent(object):
             self.opt.step()
             avg_loss.update(loss)
 
+            if curr_it == 4:
+                self.record_image(X, X1, X2, Xf)
+
         tqdm_batch.close()
-        
+
+        self.summary_writer.add_scalar('train/loss', avg_loss.val, self.epoch)
         self.scheduler.step(avg_loss.val)
 
         with torch.no_grad():
-            self.model.eval()
+            tqdm_batch = tqdm(self.testloader,
+                              total=(len(self.dataset_test) + self.config.batch_size - 1) // self.config.batch_size,
+                              desc="epoch-{}".format(self.epoch))
 
-            # add evaluation code
+            avg_loss = AverageMeter()
+            for curr_it, (X, X1, X2, Xf) in enumerate(tqdm_batch):
+                self.model.eval()
+
+                X = X.cuda(async=self.config.async_loading)
+                X1 = X1.cuda(async=self.config.async_loading)
+                X2 = X2.cuda(async=self.config.async_loading)
+                Xf = Xf.cuda(async=self.config.async_loading)
+
+                out_origin = self.model(X)
+                out_var1 = self.model(X1)
+                out_var2 = self.model(X2)
+                out_f = self.model(Xf)
+
+                loss = self.loss(out_origin, out_var1, out_var2, out_f)
+                avg_loss.update(loss)
+
+            tqdm_batch.close()
+
+            self.summary_writer.add_scalar('eval/loss', avg_loss.val, self.epoch)
