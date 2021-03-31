@@ -29,7 +29,7 @@ class DiscriminatorAgent(object):
         self.train_count = 0
 
         self.torchvision_transform = transforms.Compose([
-            transforms.RandomRotation((-3., 3.), fill='black'),
+            transforms.RandomRotation((-4, 4), fill='black'),
             transforms.ToTensor(),
         ])
 
@@ -90,11 +90,12 @@ class DiscriminatorAgent(object):
         print('Number of model parameters: {}'.format(count_model_prameters(self.model)))
 
     def collate_function(self, samples):
-        X = torch.cat([sample['X'] for sample in samples], axis=0)
-        X1 = torch.cat([sample['X1'] for sample in samples], axis=0)
-        X2 = torch.cat([sample['X2'] for sample in samples], axis=0)
+        X = torch.cat([sample['X'].view(-1,1,512,512) for sample in samples], axis=0)
+        X1 = torch.cat([sample['X1'].view(-1,1,512,512) for sample in samples], axis=0)
+        X2 = torch.cat([sample['X2'].view(-1,1,512,512) for sample in samples], axis=0)
+        Xf = torch.cat([sample['Xf'].view(-1,1,512,512) for sample in samples], axis=0)
 
-        return X, X1, X2
+        return tuple([X, X1, X2, Xf])
 
     def load_checkpoint(self, file_name):
         filename = os.path.join(self.config.root_path, self.config.checkpoint_dir, file_name)
@@ -139,27 +140,28 @@ class DiscriminatorAgent(object):
         tqdm_batch = tqdm(self.dataloader, total=self.total_iter, desc="epoch-{}".format(self.epoch))
 
         avg_loss = AverageMeter()
-        for curr_it, X, X1, X2, Xf in enumerate(tqdm_batch):
+        for curr_it, (X, X1, X2, Xf) in enumerate(tqdm_batch):
             self.model.train()
             self.opt.zero_grad()
-
+            
             X = X.cuda(async=self.config.async_loading)
             X1 = X1.cuda(async=self.config.async_loading)
             X2 = X2.cuda(async=self.config.async_loading)
+            Xf = Xf.cuda(async=self.config.async_loading)
 
-            out1 = self.model(X)
-            out2 = self.model(X1)
-            out3 = self.model(X2)
+            out_origin = self.model(X)
+            out_var1 = self.model(X1)
+            out_var2 = self.model(X2)
+            out_f = self.model(Xf)
 
-            loss = self.loss(out1, out2)
-            loss += self.loss(out2, out3)
+            loss = self.loss(out_origin, out_var1, out_var2, out_f)
 
             loss.backward()
             self.opt.step()
             avg_loss.update(loss)
 
         tqdm_batch.close()
-
+        
         self.scheduler.step(avg_loss.val)
 
         with torch.no_grad():

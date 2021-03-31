@@ -1,12 +1,12 @@
 from config import Config
 
-from agent.ingan_agent import InganAgent
+from agent.discriminator_agent import DiscriminatorAgent
 
 
 def main():
     config = Config()
 
-    agent = InganAgent(config)
+    agent = DiscriminatorAgent(config)
     agent.run()
 
 
