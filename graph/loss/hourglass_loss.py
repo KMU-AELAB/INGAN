@@ -8,6 +8,8 @@ class HourglassLoss(nn.Module):
     def __init__(self):
         super().__init__()
 
+        self.relu = nn.ReLU(inplace=True)
+
     def forward(self, outputs, features, targets):
         # structural_loss = self.structural_loss(outputs[0], targets[0]) + (self.structural_loss(outputs[1], targets[0]) / 2) +\
         #             (self.structural_loss(outputs[2], targets[0]) / 4) + (self.structural_loss(outputs[3], targets[0]) / 8)
@@ -20,7 +22,16 @@ class HourglassLoss(nn.Module):
         return area_loss + cosine_distance #+ structural_loss
 
     def area_loss(self, out, target):
-        return torch.sum(target) - torch.sum(out)
+        out = self.relu(out)
+        target = self.relu(target)
+
+        area = torch.sum(target) - torch.sum(out)
+        sub_area = torch.nonzero(target).size(0) - torch.nonzero(out).size(0)
+        print('!!!!!!!!!!')
+        print(area)
+        print(sub_area)
+        print('!!!!!!!!!!')
+        return sub_area + area * 2
 
     def cosine_distance(self, feature1, feature2):
         x_len = torch.sqrt(torch.sum(feature1 * feature1, 1))
