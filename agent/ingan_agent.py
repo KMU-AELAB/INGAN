@@ -109,6 +109,12 @@ class DiscriminatorAgent(object):
 
         except OSError as e:
             print("No checkpoint exists from '{}'. Skipping...".format(self.config.checkpoint_dir))
+            filename = os.path.join(self.config.root_path, self.config.checkpoint_dir, 'discriminator.pth.tar')
+            print("Loading checkpoint '{}'".format(filename))
+
+            checkpoint = torch.load(filename)
+            self.discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
+
             print("**First time to train**")
 
     def save_checkpoint(self, epoch):
@@ -178,7 +184,7 @@ class DiscriminatorAgent(object):
             avg_loss.update(loss)
 
             if curr_it == 4:
-                self.record_image(X, target)
+                self.record_image(X, out, target)
 
         tqdm_batch.close()
 
@@ -210,7 +216,7 @@ class DiscriminatorAgent(object):
                 avg_loss.update(loss)
 
                 if curr_it == 2:
-                    self.record_image(X, target, 'test')
+                    self.record_image(X, out, target, 'test')
 
             tqdm_batch.close()
 
