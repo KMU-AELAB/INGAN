@@ -22,7 +22,7 @@ from utils.train_utils import set_logger, count_model_prameters
 cudnn.benchmark = True
 
 
-class DiscriminatorAgent(object):
+class INGANAgent(object):
     def __init__(self, config):
         self.config = config
         self.flag_gan = False
