@@ -1,8 +1,8 @@
 import os
 from PIL import Image
-import cv2
 
 import torch
+from torchvision import transforms
 from torch.utils.data import Dataset
 
 
@@ -26,12 +26,12 @@ class INGAN_Dataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        target_name = os.path.join(self.root_dir, self.config.data_path, '', self.data_list[idx])
+        target_name = os.path.join(self.root_dir, self.config.data_path, 'discriminator_data', self.data_list[idx])
         target = Image.open(target_name)
+        target = transforms.ToTensor()(target)
 
-        data_name = os.path.join(self.root_dir, self.config.data_path, '', self.data_list[idx])
+        data_name = os.path.join(self.root_dir, self.config.data_path, 'dataset', self.data_list[idx])
         data = Image.open(data_name)
-
         data = self.transform(data)
-
-        return {'X': data, 'target': torch.tensor(target)}
+        
+        return {'X': data, 'target': target}
