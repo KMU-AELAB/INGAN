@@ -29,7 +29,8 @@ class DiscriminatorAgent(object):
         self.train_count = 0
 
         self.torchvision_transform = transforms.Compose([
-            transforms.RandomRotation((-4, 4), fill='black'),
+            transforms.RandomRotation((-120, 120), fill='black'),
+            transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
         ])
 
