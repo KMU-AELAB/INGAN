@@ -75,7 +75,6 @@ class Hourglass(nn.Module):
 
         self.lrelu = nn.LeakyReLU(inplace=True)
         self.relu = nn.ReLU(inplace=True)
-        self.sigmoid = nn.Sigmoid()
 
         self.apply(weights_init)
 
@@ -120,7 +119,6 @@ class InHourglass(nn.Module):
 
         self.lrelu = nn.LeakyReLU(inplace=True)
         self.relu = nn.ReLU(inplace=True)
-        self.sigmoid = nn.Sigmoid()
 
         self.apply(weights_init)
 
@@ -152,12 +150,14 @@ class Generator(nn.Module):
         self.hourglass2 = Hourglass()
         self.hourglass3 = Hourglass()
 
+        self.tanh = nn.Tanh()
+
         self.apply(weights_init)
 
     def forward(self, x):
         out1 = self.in_hourglass(x)
-        out2 = self.hourglass1(x)
-        out3 = self.hourglass2(x)
-        output = self.hourglass3(x)
+        out2 = self.hourglass1(out1)
+        out3 = self.hourglass2(out2)
+        output = self.hourglass3(out3)
 
-        return output, out3, out2, out1
+        return self.tanh(output), self.tanh(out3), self.tanh(out2), self.tanh(out1)
