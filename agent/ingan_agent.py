@@ -30,7 +30,7 @@ class INGANAgent(object):
 
         self.torchvision_transform = transforms.Compose([
             transforms.RandomHorizontalFlip(),
-            transforms.RandomAffine(0, (512, 0)),
+            transforms.RandomAffine(0, (0.7, 0)),
             transforms.ToTensor(),
             transforms.RandomErasing(),
         ])
@@ -60,7 +60,7 @@ class INGANAgent(object):
         self.lr = self.config.learning_rate
 
         # define optimizer
-        self.opt = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.opt = torch.optim.Adam(self.generator.parameters(), lr=self.lr)
 
         # define optimize scheduler
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt, mode='min', factor=0.8, cooldown=20)
@@ -78,7 +78,8 @@ class INGANAgent(object):
 
         # parallel setting
         gpu_list = list(range(self.config.gpu_cnt))
-        self.model = nn.DataParallel(self.model, device_ids=gpu_list)
+        self.generator = nn.DataParallel(self.generator, device_ids=gpu_list)
+        self.discriminator = nn.DataParallel(self.discriminator, device_ids=gpu_list)
 
         # Model Loading from the latest checkpoint if not found start from scratch.
         self.load_checkpoint(self.config.checkpoint_file)
@@ -90,7 +91,8 @@ class INGANAgent(object):
 
     def print_train_info(self):
         print("seed: ", self.manual_seed)
-        print('Number of model parameters: {}'.format(count_model_prameters(self.model)))
+        print('Number of generator parameters: {}'.format(count_model_prameters(self.generator)))
+        print('Number of discriminator parameters: {}'.format(count_model_prameters(self.discriminator)))
 
     def collate_function(self, samples):
         X = torch.cat([sample['X'].view(-1, 3, 1024, 512) for sample in samples], axis=0)
@@ -163,7 +165,8 @@ class INGANAgent(object):
 
         avg_loss = AverageMeter()
         for curr_it, (X, target) in enumerate(tqdm_batch):
-            self.model.train()
+            self.generator.train()
+            self.discriminator.eval()
             self.opt.zero_grad()
 
             X = X.cuda(async=self.config.async_loading)
@@ -198,7 +201,8 @@ class INGANAgent(object):
 
             avg_loss = AverageMeter()
             for curr_it, (X, target) in enumerate(tqdm_batch):
-                self.model.eval()
+                self.generator.eval()
+                self.discriminator.eval()
 
                 X = X.cuda(async=self.config.async_loading)
                 target = target.cuda(async=self.config.async_loading)
