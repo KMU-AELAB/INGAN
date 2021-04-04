@@ -7,31 +7,32 @@ import torch
 from torch import nn
 from torch.backends import cudnn
 from torch.utils.data import DataLoader
+from torchvision import transforms
 
 from tensorboardX import SummaryWriter
 
-from graph.model.sample_model import SampleModel as Model
-from graph.loss.sample_loss import SampleLoss as Loss
-from data.discriminator_dataset import SampleDataset
+from graph.model.hourglass_generator import Generator
+from graph.model.discrimanator import Discriminator
+from graph.loss.hourglass_loss import HourglassLoss as Loss
+from data.dataset import INGAN_Dataset
 
 from utils.metrics import AverageMeter
-from utils.train_utils import free, frozen, set_logger, count_model_prameters
-
+from utils.train_utils import set_logger, count_model_prameters
 
 cudnn.benchmark = True
 
 
-class InganAgent(object):
+class DiscriminatorAgent(object):
     def __init__(self, config):
         self.config = config
         self.flag_gan = False
         self.train_count = 0
 
         self.torchvision_transform = transforms.Compose([
-            transforms.Resize((1024, 512)),
-            transforms.TenCrop((1024, 512)),
-            transforms.ColorJitter(brightness=(0.8, 1.2)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomAffine(0, (512, 0)),
             transforms.ToTensor(),
+            transforms.RandomErasing(),
         ])
 
         self.pretraining_step_size = self.config.pretraining_step_size
@@ -40,12 +41,17 @@ class InganAgent(object):
         self.logger = set_logger('train_epoch.log')
 
         # define dataloader
-        self.dataset = SampleDataset(self.config)
-        self.dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers=1,
+        self.dataset = INGAN_Dataset(self.config, self.torchvision_transform)
+        self.dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers=2,
+                                     pin_memory=self.config.pin_memory, collate_fn=self.collate_function)
+
+        self.dataset_test = INGAN_Dataset(self.config, self.torchvision_transform, True)
+        self.testloader = DataLoader(self.dataset_test, batch_size=self.batch_size, shuffle=False, num_workers=1,
                                      pin_memory=self.config.pin_memory, collate_fn=self.collate_function)
 
         # define models
-        self.model = Model().cuda()
+        self.generator = Generator().cuda()
+        self.discriminator = Discriminator().cuda()
 
         # define loss
         self.loss = Loss().cuda()
@@ -57,7 +63,7 @@ class InganAgent(object):
         self.opt = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
         # define optimize scheduler
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt, mode='min', factor=0.8, cooldown=6)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt, mode='min', factor=0.8, cooldown=20)
 
         # initialize train counter
         self.epoch = 0
@@ -79,7 +85,7 @@ class InganAgent(object):
 
         # Summary Writer
         self.summary_writer = SummaryWriter(log_dir=os.path.join(self.config.root_path, self.config.summary_dir),
-                                            comment='BarGen')
+                                            comment='Discriminator')
         self.print_train_info()
 
     def print_train_info(self):
@@ -87,7 +93,10 @@ class InganAgent(object):
         print('Number of model parameters: {}'.format(count_model_prameters(self.model)))
 
     def collate_function(self, samples):
-        return samples
+        X = torch.cat([sample['X'].view(-1, 3, 1024, 512) for sample in samples], axis=0)
+        target = torch.cat([sample['target'].view(-1, 1, 512, 512) for sample in samples], axis=0)
+
+        return tuple([X, target])
 
     def load_checkpoint(self, file_name):
         filename = os.path.join(self.config.root_path, self.config.checkpoint_dir, file_name)
@@ -95,8 +104,8 @@ class InganAgent(object):
             print("Loading checkpoint '{}'".format(filename))
             checkpoint = torch.load(filename)
 
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-            self.opt.load_state_dict(checkpoint['optimizer'])
+            self.discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
+            self.generator.load_state_dict(checkpoint['generator_state_dict'])
 
         except OSError as e:
             print("No checkpoint exists from '{}'. Skipping...".format(self.config.checkpoint_dir))
@@ -107,8 +116,8 @@ class InganAgent(object):
                                 'checkpoint_{}.pth.tar'.format(epoch))
 
         state = {
-            'model_state_dict': self.model.state_dict(),
-            'optimizer': self.opt.state_dict(),
+            'generator_state_dict': self.generator.state_dict(),
+            'discriminator_state_dict': self.discriminator.state_dict(),
         }
 
         torch.save(state, tmp_name)
@@ -122,6 +131,19 @@ class InganAgent(object):
         except KeyboardInterrupt:
             print("You have entered CTRL+C.. Wait to finalize")
 
+    def record_image(self, X, out, target, step='train'):
+        self.summary_writer.add_image(step + '/img 1', X[0], self.epoch)
+        self.summary_writer.add_image(step + '/img 2', X[1], self.epoch)
+        self.summary_writer.add_image(step + '/img 3', X[2], self.epoch)
+
+        self.summary_writer.add_image(step + '/result 1', out[0], self.epoch)
+        self.summary_writer.add_image(step + '/result 2', out[1], self.epoch)
+        self.summary_writer.add_image(step + '/result 3', out[2], self.epoch)
+
+        self.summary_writer.add_image(step + '/target 1', target[0], self.epoch)
+        self.summary_writer.add_image(step + '/target 2', target[1], self.epoch)
+        self.summary_writer.add_image(step + '/target 3', target[2], self.epoch)
+
     def train(self):
         for _ in range(self.config.epoch):
             self.epoch += 1
@@ -134,26 +156,62 @@ class InganAgent(object):
         tqdm_batch = tqdm(self.dataloader, total=self.total_iter, desc="epoch-{}".format(self.epoch))
 
         avg_loss = AverageMeter()
-        for curr_it, (X, y) in enumerate(tqdm_batch):
-            self.accumulate_iter += 1
-
+        for curr_it, (X, target) in enumerate(tqdm_batch):
             self.model.train()
-            free(self.model)
+            self.opt.zero_grad()
 
             X = X.cuda(async=self.config.async_loading)
+            target = target.cuda(async=self.config.async_loading)
 
-            logits = self.model(X)
+            out, inter_out3, inter_out2, inter_out1 = self.generator(X)
 
-            loss = self.loss_disc(logits, y)
+            out_feature = self.discriminator(out)
+            inter_out3_feature = self.discriminator(inter_out3)
+            inter_out2_feature = self.discriminator(inter_out2)
+            inter_out1_feature = self.discriminator(inter_out1)
+
+            loss = self.loss([out, inter_out3, inter_out2, inter_out1],
+                             [out_feature, inter_out3_feature, inter_out2_feature, inter_out1_feature], target)
+
             loss.backward()
             self.opt.step()
             avg_loss.update(loss)
 
+            if curr_it == 4:
+                self.record_image(X, target)
+
         tqdm_batch.close()
 
+        self.summary_writer.add_scalar('train/loss', avg_loss.val, self.epoch)
         self.scheduler.step(avg_loss.val)
 
         with torch.no_grad():
-            self.model.eval()
+            tqdm_batch = tqdm(self.testloader,
+                              total=(len(self.dataset_test) + self.config.batch_size - 1) // self.config.batch_size,
+                              desc="epoch-{}".format(self.epoch))
 
-            # add evaluation code
+            avg_loss = AverageMeter()
+            for curr_it, (X, target) in enumerate(tqdm_batch):
+                self.model.eval()
+
+                X = X.cuda(async=self.config.async_loading)
+                target = target.cuda(async=self.config.async_loading)
+
+                out, inter_out3, inter_out2, inter_out1 = self.generator(X)
+
+                out_feature = self.discriminator(out)
+                inter_out3_feature = self.discriminator(inter_out3)
+                inter_out2_feature = self.discriminator(inter_out2)
+                inter_out1_feature = self.discriminator(inter_out1)
+
+                loss = self.loss([out, inter_out3, inter_out2, inter_out1],
+                                 [out_feature, inter_out3_feature, inter_out2_feature, inter_out1_feature], target)
+
+                avg_loss.update(loss)
+
+                if curr_it == 2:
+                    self.record_image(X, target, 'test')
+
+            tqdm_batch.close()
+
+            self.summary_writer.add_scalar('eval/loss', avg_loss.val, self.epoch)
