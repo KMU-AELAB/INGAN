@@ -29,6 +29,7 @@ class INGANAgent(object):
         self.train_count = 0
 
         self.torchvision_transform = transforms.Compose([
+            transforms.Resize((1024, 512)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomAffine(0, (0.7, 0)),
             transforms.ToTensor(),
@@ -171,16 +172,17 @@ class INGANAgent(object):
 
             X = X.cuda(async=self.config.async_loading)
             target = target.cuda(async=self.config.async_loading)
-
-            out, inter_out3, inter_out2, inter_out1 = self.generator(X)
-
+            
+            out, inter_out2, inter_out1 = self.generator(X)
+            
             out_feature = self.discriminator(out)
-            inter_out3_feature = self.discriminator(inter_out3)
             inter_out2_feature = self.discriminator(inter_out2)
             inter_out1_feature = self.discriminator(inter_out1)
+            target_feature = self.discriminator(target)
 
-            loss = self.loss([out, inter_out3, inter_out2, inter_out1],
-                             [out_feature, inter_out3_feature, inter_out2_feature, inter_out1_feature], target)
+            loss = self.loss([out, inter_out2, inter_out1],
+                             [out_feature, inter_out2_feature, inter_out1_feature],
+                             [target, target_feature])
 
             loss.backward()
             self.opt.step()
@@ -206,16 +208,17 @@ class INGANAgent(object):
 
                 X = X.cuda(async=self.config.async_loading)
                 target = target.cuda(async=self.config.async_loading)
-
-                out, inter_out3, inter_out2, inter_out1 = self.generator(X)
-
+                
+                out, inter_out2, inter_out1 = self.generator(X)
+                
                 out_feature = self.discriminator(out)
-                inter_out3_feature = self.discriminator(inter_out3)
                 inter_out2_feature = self.discriminator(inter_out2)
                 inter_out1_feature = self.discriminator(inter_out1)
+                target_feature = self.discriminator(target)
 
-                loss = self.loss([out, inter_out3, inter_out2, inter_out1],
-                                 [out_feature, inter_out3_feature, inter_out2_feature, inter_out1_feature], target)
+                loss = self.loss([out, inter_out2, inter_out1],
+                                 [out_feature, inter_out2_feature, inter_out1_feature],
+                                 [target, target_feature])
 
                 avg_loss.update(loss)
 
