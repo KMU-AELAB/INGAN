@@ -12,13 +12,13 @@ class HourglassLoss(nn.Module):
     def forward(self, outputs, features, targets):
         # structural_loss = self.structural_loss(outputs[0], targets[0]) + (self.structural_loss(outputs[1], targets[0]) / 2) +\
         #             (self.structural_loss(outputs[2], targets[0]) / 4) + (self.structural_loss(outputs[3], targets[0]) / 8)
-        area_loss = self.area_loss(outputs[0], targets[0]) + (self.area_loss(outputs[1], targets[0]) / 2) +\
-                    (self.area_loss(outputs[2], targets[0]) / 4)
+#         area_loss = self.area_loss(outputs[0], targets[0]) + (self.area_loss(outputs[1], targets[0]) / 2) +\
+#                     (self.area_loss(outputs[2], targets[0]) / 4)
 
         cosine_distance = self.cosine_distance(features[0], targets[1]) + (self.cosine_distance(features[1], targets[1]) / 2) +\
                     (self.cosine_distance(features[2], targets[1]) / 4)
-        print(area_loss, cosine_distance, '?????????????')
-        return cosine_distance + area_loss * 0.001 #+ structural_loss
+        
+        return cosine_distance #+ area_loss * 0.001 #+ structural_loss
 
     def area_loss(self, out, target):
         area = torch.mean(torch.abs(torch.sum(target, (1, 2, 3)) - torch.sum(out, (1, 2, 3))))
