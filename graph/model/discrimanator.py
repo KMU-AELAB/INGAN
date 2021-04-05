@@ -62,13 +62,16 @@ class Discriminator(nn.Module):
         self.channel_size = channel_size
 
         self.discriminator = DiscriminatorModule(channel_size)
+        self.out = nn.Linear(192, 1)
+        self.sigmoid = nn.Sigmoid()
 
         self.apply(weights_init)
 
     def forward(self, x):
         feature = self.discriminator(x)
+        out = self.sigmoid(self.out(feature))
 
-        return feature
+        return feature, out
 
 
 # class Discriminator(nn.Module):

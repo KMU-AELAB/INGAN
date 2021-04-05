@@ -10,10 +10,15 @@ class DiscriminatorLoss(nn.Module):
         self.loss = nn.BCELoss()
         self.tm_loss = nn.TripletMarginLoss()
 
-    def forward(self, origin, var1, var2, f):
-        distance_loss = self.cosine_distance(origin, var1) + self.cosine_distance(origin, var2)
-        triple_loss = self.tm_loss(origin, var1, f) + self.tm_loss(origin, var2, f)
-        
+    def forward(self, features, outs):
+        valid = torch.Variable(torch.Tensor(outs[0].size(0), 1).fill_(1.0), requires_grad=False)
+        fake = torch.Variable(torch.Tensor(outs[0].size(0), 1).fill_(0.0), requires_grad=False)
+
+        distance_loss = self.cosine_distance(features[0], features[1]) + self.cosine_distance(features[0], features[2])
+        triple_loss = self.tm_loss(features[0], features[1], features[3]) + self.tm_loss(features[0], features[2], features[3])
+        gan_loss = self.loss(outs[0], valid) + self.loss(outs[1], valid) + \
+                   self.loss(outs[2], valid) + (self.loss(outs[3], fake) * 3)
+        print(distance_loss, triple_loss, gan_loss)
         return distance_loss + triple_loss*1.5
     
     def cosine_distance(self, feature1, feature2):
