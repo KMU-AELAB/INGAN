@@ -1,4 +1,5 @@
 import os
+import random
 from PIL import Image
 
 import torch
@@ -33,5 +34,7 @@ class INGAN_Dataset(Dataset):
         data_name = os.path.join(self.root_dir, self.config.data_path, 'dataset', self.data_list[idx])
         data = Image.open(data_name)
         data = self.transform(data)
+        if random.random() < 0.5:
+            data = torch.roll(data, random.randint(10, 700), dims=2)
         
         return {'X': data, 'target': target}

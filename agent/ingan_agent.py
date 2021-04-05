@@ -29,11 +29,10 @@ class INGANAgent(object):
         self.train_count = 0
 
         self.torchvision_transform = transforms.Compose([
-            transforms.Resize((1024, 512)),
+            transforms.Resize((512, 1024)),
             transforms.RandomHorizontalFlip(),
-            transforms.RandomAffine(0, (0.7, 0)),
             transforms.ToTensor(),
-            transforms.RandomErasing(),
+            transforms.RandomErasing(p=0.2, scale=(0.02, 0.04), ratio=(0.5, 1.5)),
         ])
 
         self.pretraining_step_size = self.config.pretraining_step_size
@@ -96,7 +95,7 @@ class INGANAgent(object):
         print('Number of discriminator parameters: {}'.format(count_model_prameters(self.discriminator)))
 
     def collate_function(self, samples):
-        X = torch.cat([sample['X'].view(-1, 3, 1024, 512) for sample in samples], axis=0)
+        X = torch.cat([sample['X'].view(-1, 3, 512, 1024) for sample in samples], axis=0)
         target = torch.cat([sample['target'].view(-1, 1, 512, 512) for sample in samples], axis=0)
 
         return tuple([X, target])

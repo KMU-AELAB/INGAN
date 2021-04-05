@@ -107,7 +107,7 @@ class InHourglass(nn.Module):
         self.down4 = Down(128, 256)  # 64 -> 32
         self.down5 = Down(256, 512)  # 32 -> 16
 
-        self.global_conv = nn.Conv2d(512, 1024, kernel_size=[32, 16], stride=1, bias=False)
+        self.global_conv = nn.Conv2d(512, 1024, kernel_size=[16, 32], stride=1, bias=False)
         self.deconv = nn.ConvTranspose2d(in_channels=1024, out_channels=512, kernel_size=[16, 16], stride=[16, 16],
                                          bias=False)
         
