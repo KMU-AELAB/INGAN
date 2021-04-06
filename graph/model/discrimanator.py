@@ -50,7 +50,7 @@ class DiscriminatorModule(nn.Module):
         x = self.avg_pool(x)
         x = x.view(-1, x.size(1))
         
-        feature = self.lrelu(self.feature_linear(x)).view(-1, 192)
+        feature = self.lrelu(self.feature_linear(x)).view(-1, 160)
 
         return feature
 
