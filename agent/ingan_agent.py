@@ -13,6 +13,7 @@ from tensorboardX import SummaryWriter
 
 from graph.model.hourglass_generator import Generator
 from graph.model.discrimanator import Discriminator
+from graph.model.regressor import Regressor
 from graph.loss.hourglass_loss import HourglassLoss as Loss
 from data.dataset import INGAN_Dataset
 
@@ -51,6 +52,7 @@ class INGANAgent(object):
 
         # define models
         self.generator = Generator().cuda()
+        self.regressor = Regressor().cuda()
         self.discriminator = Discriminator().cuda()
 
         # define loss
@@ -60,7 +62,9 @@ class INGANAgent(object):
         self.lr = self.config.learning_rate
 
         # define optimizer
-        self.opt = torch.optim.Adam(self.generator.parameters(), lr=self.lr)
+        self.opt = torch.optim.Adam([{'params': self.generator.parameters()},
+                                     {'params': self.regressor.parameters()},],
+                                    lr=self.lr)
 
         # define optimize scheduler
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt, mode='min', factor=0.8, cooldown=20)
@@ -79,6 +83,7 @@ class INGANAgent(object):
         # parallel setting
         gpu_list = list(range(self.config.gpu_cnt))
         self.generator = nn.DataParallel(self.generator, device_ids=gpu_list)
+        self.regressor = nn.DataParallel(self.regressor, device_ids=gpu_list)
         self.discriminator = nn.DataParallel(self.discriminator, device_ids=gpu_list)
 
         # Model Loading from the latest checkpoint if not found start from scratch.
@@ -92,13 +97,15 @@ class INGANAgent(object):
     def print_train_info(self):
         print("seed: ", self.manual_seed)
         print('Number of generator parameters: {}'.format(count_model_prameters(self.generator)))
+        print('Number of regressor parameters: {}'.format(count_model_prameters(self.regressor)))
         print('Number of discriminator parameters: {}'.format(count_model_prameters(self.discriminator)))
 
     def collate_function(self, samples):
         X = torch.cat([sample['X'].view(-1, 3, 512, 1024) for sample in samples], axis=0)
         target = torch.cat([sample['target'].view(-1, 1, 512, 512) for sample in samples], axis=0)
+        height = torch.cat([sample['height'] for sample in samples], axis=0)
 
-        return tuple([X, target])
+        return tuple([X, target, height])
 
     def load_checkpoint(self, file_name):
         filename = os.path.join(self.config.root_path, self.config.checkpoint_dir, file_name)
@@ -108,6 +115,7 @@ class INGANAgent(object):
 
             self.discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
             self.generator.load_state_dict(checkpoint['generator_state_dict'])
+            self.regressor.load_state_dict(checkpoint['regressor_state_dict'])
 
         except OSError as e:
             print("No checkpoint exists from '{}'. Skipping...".format(self.config.checkpoint_dir))
@@ -126,6 +134,7 @@ class INGANAgent(object):
         state = {
             'generator_state_dict': self.generator.state_dict(),
             'discriminator_state_dict': self.discriminator.state_dict(),
+            'regressor_state_dict': self.regressor.state_dict(),
         }
 
         torch.save(state, tmp_name)
@@ -164,24 +173,27 @@ class INGANAgent(object):
         tqdm_batch = tqdm(self.dataloader, total=self.total_iter, desc="epoch-{}".format(self.epoch))
 
         avg_loss = AverageMeter()
-        for curr_it, (X, target) in enumerate(tqdm_batch):
+        for curr_it, (X, target, height) in enumerate(tqdm_batch):
             self.generator.train()
+            self.regressor.train()
             self.discriminator.eval()
             self.opt.zero_grad()
 
             X = X.cuda(async=self.config.async_loading)
             target = target.cuda(async=self.config.async_loading)
+            height = height.cuda(async=self.config.async_loading)
             
             out, inter_out2, inter_out1 = self.generator(X)
-            
-            out_feature = self.discriminator(out)
-            inter_out2_feature = self.discriminator(inter_out2)
-            inter_out1_feature = self.discriminator(inter_out1)
-            target_feature = self.discriminator(target)
+            pred_h = self.regressor(out, inter_out1, inter_out2)
 
-            loss = self.loss([out, inter_out2, inter_out1],
-                             [out_feature, inter_out2_feature, inter_out1_feature],
-                             [target, target_feature])
+            feature_origin, feature_out, disc_out = self.discriminator(target, out)
+            _, feature_inter2, disc_inter2 = self.discriminator(target, inter_out2)
+            _, feature_inter1, disc_inter1 = self.discriminator(target, inter_out1)
+
+            loss = self.loss([target, out, inter_out2, inter_out1],
+                             [feature_origin, feature_out, feature_inter2, feature_inter1],
+                             [disc_out, disc_inter2, disc_inter1],
+                             [height, pred_h])
 
             loss.backward()
             self.opt.step()
@@ -201,23 +213,27 @@ class INGANAgent(object):
                               desc="epoch-{}".format(self.epoch))
 
             avg_loss = AverageMeter()
-            for curr_it, (X, target) in enumerate(tqdm_batch):
+            for curr_it, (X, target, height) in enumerate(tqdm_batch):
                 self.generator.eval()
+                self.regressor.eval()
                 self.discriminator.eval()
 
                 X = X.cuda(async=self.config.async_loading)
                 target = target.cuda(async=self.config.async_loading)
-                
-                out, inter_out2, inter_out1 = self.generator(X)
-                
-                out_feature = self.discriminator(out)
-                inter_out2_feature = self.discriminator(inter_out2)
-                inter_out1_feature = self.discriminator(inter_out1)
-                target_feature = self.discriminator(target)
+                height = height.cuda(async=self.config.async_loading)
 
-                loss = self.loss([out, inter_out2, inter_out1],
-                                 [out_feature, inter_out2_feature, inter_out1_feature],
-                                 [target, target_feature])
+                out, inter_out2, inter_out1 = self.generator(X)
+
+                pred_h = self.regressor(out, inter_out1, inter_out2)
+
+                feature_origin, feature_out, disc_out = self.discriminator(target, out)
+                _, feature_inter2, disc_inter2 = self.discriminator(target, inter_out2)
+                _, feature_inter1, disc_inter1 = self.discriminator(target, inter_out1)
+
+                loss = self.loss([target, out, inter_out2, inter_out1],
+                                 [feature_origin, feature_out, feature_inter2, feature_inter1],
+                                 [disc_out, disc_inter2, disc_inter1],
+                                 [height, pred_h])
 
                 avg_loss.update(loss)
 

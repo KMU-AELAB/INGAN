@@ -1,5 +1,6 @@
 import os
 import random
+import numpy as np
 from PIL import Image
 
 import torch
@@ -17,7 +18,7 @@ class INGAN_Dataset(Dataset):
             tmp_list = open(os.path.join(self.root_dir, config.data_path, 'test_list.txt')).readlines()
         else:
             tmp_list = open(os.path.join(self.root_dir, config.data_path, 'train_list.txt')).readlines()
-        self.data_list = [i.split()[0] + '.png' for i in tmp_list]
+        self.data_list = [[i.split()[0] + '.png', float(i.split()[1])] for i in tmp_list]
 
 
     def __len__(self):
@@ -27,7 +28,7 @@ class INGAN_Dataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        target_name = os.path.join(self.root_dir, self.config.data_path, 'discriminator_data', self.data_list[idx])
+        target_name = os.path.join(self.root_dir, self.config.data_path, 'discriminator_data', self.data_list[idx][0])
         target = Image.open(target_name)
         target = transforms.ToTensor()(target)
 
@@ -36,5 +37,7 @@ class INGAN_Dataset(Dataset):
         data = self.transform(data)
         if random.random() < 0.5:
             data = torch.roll(data, random.randint(10, 700), dims=2)
+
+        height = np.array([self.data_list[idx][1]])
         
-        return {'X': data, 'target': target}
+        return {'X': data, 'target': target, 'height': torch.from_numpy(height)}

@@ -8,17 +8,26 @@ class HourglassLoss(nn.Module):
         super().__init__()
 
         self.relu = nn.ReLU(inplace=True)
+        self.loss = nn.BCELoss()
+        self.h_loss = nn.L1Loss()
 
-    def forward(self, outputs, features, targets):
+    def forward(self, recons, features, disc_outs, heights):
+        valid = torch.autograd.Variable(torch.ones(disc_outs[0].size())).cuda()
+
         # structural_loss = self.structural_loss(outputs[0], targets[0]) + (self.structural_loss(outputs[1], targets[0]) / 2) +\
         #             (self.structural_loss(outputs[2], targets[0]) / 4) + (self.structural_loss(outputs[3], targets[0]) / 8)
 #         area_loss = self.area_loss(outputs[0], targets[0]) + (self.area_loss(outputs[1], targets[0]) / 2) +\
 #                     (self.area_loss(outputs[2], targets[0]) / 4)
 
-        cosine_distance = self.cosine_distance(features[0], targets[1]) + (self.cosine_distance(features[1], targets[1]) / 2) +\
-                    (self.cosine_distance(features[2], targets[1]) / 4)
-        
-        return cosine_distance #+ area_loss * 0.001 #+ structural_loss
+        cosine_distance = self.cosine_distance(features[0], features[1]) +\
+                          (self.cosine_distance(features[0], features[2]) / 2) +\
+                          (self.cosine_distance(features[0], features[3]) / 4)
+
+        gan_loss = self.loss(disc_outs[0], valid) + self.loss(disc_outs[1], valid) + self.loss(disc_outs[2], valid)
+
+        h_loss = self.h_loss(heights[0], heights[1])
+        print(cosine_distance, gan_loss, h_loss)
+        return cosine_distance + gan_loss + h_loss #+ area_loss * 0.001 #+ structural_loss
 
     def area_loss(self, out, target):
         area = torch.mean(torch.abs(torch.sum(target, (1, 2, 3)) - torch.sum(out, (1, 2, 3))))
