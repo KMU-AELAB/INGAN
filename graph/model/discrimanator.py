@@ -67,11 +67,15 @@ class Discriminator(nn.Module):
 
         self.apply(weights_init)
 
-    def forward(self, x):
-        feature = self.discriminator(x)
+    def forward(self, x, xf):
+        x_feature = self.discriminator(x)
+        xf_feature = self.discriminator(xf)
+
+        feature = torch.cat((x_feature, xf_feature), dim=1)
+
         out = self.sigmoid(self.out(feature))
 
-        return feature, out
+        return x_feature, xf_feature, out
 
 
 # class Discriminator(nn.Module):

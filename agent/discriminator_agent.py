@@ -166,13 +166,12 @@ class DiscriminatorAgent(object):
             X2 = X2.cuda(async=self.config.async_loading)
             Xf = Xf.cuda(async=self.config.async_loading)
 
-            feature_origin, out_origin = self.model(X)
-            feature_var1, out_var1 = self.model(X1)
-            feature_var2, out_var2 = self.model(X2)
-            feature_f, out_f = self.model(Xf)
+            feature_origin, feature_var1, out_var1 = self.model(X, X1)
+            _, feature_var2, out_var2 = self.model(X, X2)
+            _, feature_f, out_f = self.model(X, Xf)
 
             loss = self.loss([feature_origin, feature_var1, feature_var2, feature_f],
-                             [out_origin, out_var1, out_var2, out_f])
+                             [out_var1, out_var2, out_f])
 
             loss.backward()
             self.opt.step()
