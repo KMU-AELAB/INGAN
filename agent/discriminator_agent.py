@@ -166,7 +166,7 @@ class DiscriminatorAgent(object):
             X2 = X2.cuda(async=self.config.async_loading)
             Xf = Xf.cuda(async=self.config.async_loading)
 
-            feature_origin, out_origin  = self.model(X)
+            feature_origin, out_origin = self.model(X)
             feature_var1, out_var1 = self.model(X1)
             feature_var2, out_var2 = self.model(X2)
             feature_f, out_f = self.model(Xf)
@@ -200,12 +200,13 @@ class DiscriminatorAgent(object):
                 X2 = X2.cuda(async=self.config.async_loading)
                 Xf = Xf.cuda(async=self.config.async_loading)
 
-                out_origin = self.model(X)
-                out_var1 = self.model(X1)
-                out_var2 = self.model(X2)
-                out_f = self.model(Xf)
+                feature_origin, out_origin = self.model(X)
+                feature_var1, out_var1 = self.model(X1)
+                feature_var2, out_var2 = self.model(X2)
+                feature_f, out_f = self.model(Xf)
 
-                loss = self.loss(out_origin, out_var1, out_var2, out_f)
+                loss = self.loss([feature_origin, feature_var1, feature_var2, feature_f],
+                                 [out_origin, out_var1, out_var2, out_f])
                 avg_loss.update(loss)
 
             tqdm_batch.close()
