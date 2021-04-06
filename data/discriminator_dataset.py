@@ -18,7 +18,7 @@ class DiscriminatorDataset(Dataset):
             tmp_list = open(os.path.join(self.root_dir, config.data_path, 'test_list.txt')).readlines()
         else:
             tmp_list = open(os.path.join(self.root_dir, config.data_path, 'train_list.txt')).readlines()
-        self.data_list = [i.split()[0] + '.png' for i in tmp_list]
+        self.data_list = [[i.split()[0] + '.png', i.split()[2]] for i in tmp_list]
 
 
     def __len__(self):
@@ -29,9 +29,14 @@ class DiscriminatorDataset(Dataset):
             idx = idx.tolist()
 
         data_name = os.path.join(self.root_dir, self.config.data_path, 'discriminator_data',
-                                 self.data_list[idx])
-        fdata_name = os.path.join(self.root_dir, self.config.data_path, 'discriminator_data',
-                                  self.data_list[(idx+random.randint(5, 1000)) % len(self.data_list)])
+                                 self.data_list[idx][0])
+        ratio_info = self.data_list[idx][1]
+        while True:
+            if '4-' not in ratio_info and \
+                    self.data_list[(idx + random.randint(5, 1000)) % len(self.data_list)][1] != ratio_info:
+                fdata_name = os.path.join(self.root_dir, self.config.data_path, 'discriminator_data',
+                                          self.data_list[(idx + random.randint(5, 1000)) % len(self.data_list)][1])
+                break
         
         img = Image.open(data_name)
         fimg = Image.open(fdata_name)
