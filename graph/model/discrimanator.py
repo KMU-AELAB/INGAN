@@ -9,10 +9,10 @@ def conv2d(_in):
     return nn.Sequential(
         nn.Conv2d(_in, _in, kernel_size=3, stride=1, padding=1, bias=False),
         nn.BatchNorm2d(_in),
-        nn.ReLU(inplace=True),
+        nn.LeakyReLU(0.2, inplace=True),
         nn.Conv2d(_in, _in, kernel_size=3, stride=1, padding=1, bias=False),
         nn.BatchNorm2d(_in),
-        nn.ReLU(inplace=True),
+        nn.LeakyReLU(0.2, inplace=True),
     )
 
 
@@ -20,7 +20,7 @@ def reduce2d(_in, _out):
     return nn.Sequential(
         nn.Conv2d(_in, _out, kernel_size=3, stride=2, padding=1, bias=False),
         nn.BatchNorm2d(_out),
-        nn.ReLU(inplace=True),
+        nn.LeakyReLU(0.2, inplace=True),
     )
 
 class DiscriminatorModule(nn.Module):
@@ -35,9 +35,11 @@ class DiscriminatorModule(nn.Module):
         )
 
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.feature_linear = nn.Linear(self.channel_size[-1], 160)
+        self.feature_linear = nn.Linear(self.channel_size[-1], 128, bias=False)
+        
+        self.dropout = nn.Dropout()
 
-        self.lrelu = nn.LeakyReLU(inplace=True)
+        self.lrelu = nn.LeakyReLU(0.2, inplace=True)
 
         self.apply(weights_init)
 
@@ -50,7 +52,7 @@ class DiscriminatorModule(nn.Module):
         x = self.avg_pool(x)
         x = x.view(-1, x.size(1))
         
-        feature = self.lrelu(self.feature_linear(x)).view(-1, 160)
+        feature = self.dropout(self.lrelu(self.feature_linear(x)).view(-1, 128))
 
         return feature
 
@@ -62,41 +64,10 @@ class Discriminator(nn.Module):
         self.channel_size = channel_size
 
         self.discriminator = DiscriminatorModule(channel_size)
-        self.out = nn.Linear(160 * 2, 1)
-        self.sigmoid = nn.Sigmoid()
 
         self.apply(weights_init)
 
-    def forward(self, x, xf):
-        x_feature = self.discriminator(x)
-        xf_feature = self.discriminator(xf)
+    def forward(self, x):
+        feature = self.discriminator(x)
 
-        feature = torch.cat((x_feature, xf_feature), dim=1)
-
-        out = self.sigmoid(self.out(feature))
-
-        return x_feature, xf_feature, out
-
-
-# class Discriminator(nn.Module):
-#     def __init__(self, channel_size=[1, 32, 64, 128, 256, 512, 1024, 2048]):
-#         super(Discriminator, self).__init__()
-#
-#         self.channel_size = channel_size
-#
-#         self.discriminator = DiscriminatorModule(channel_size)
-#         self.out_linear = nn.Linear(192*2, 1)
-#
-#         self.sigmoid = nn.Sigmoid()
-#
-#         self.apply(weights_init)
-#
-#     def forward(self, x1, x2):
-#         feature_x1 = self.discriminator(x1)
-#         feature_x2 = self.discriminator(x2)
-#
-#         x = torch.cat((feature_x1, feature_x2), dim=1)
-#
-#         output = self.sigmoid(self.out_linear(x))
-#
-#         return output, feature_x1, feature_x2
+        return feature

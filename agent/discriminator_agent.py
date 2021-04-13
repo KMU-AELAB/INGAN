@@ -27,6 +27,7 @@ class DiscriminatorAgent(object):
         self.config = config
         self.flag_gan = False
         self.train_count = 0
+        self._min = 9999.
 
         self.torchvision_transform = transforms.Compose([
             transforms.RandomRotation((-120, 120), fill='black'),
@@ -65,7 +66,6 @@ class DiscriminatorAgent(object):
 
         # initialize train counter
         self.epoch = 0
-        self.accumulate_iter = 0
         self.total_iter = (len(self.dataset) + self.config.batch_size - 1) // self.config.batch_size
 
         self.manual_seed = random.randint(10000, 99999)
@@ -110,17 +110,19 @@ class DiscriminatorAgent(object):
             print("No checkpoint exists from '{}'. Skipping...".format(self.config.checkpoint_dir))
             print("**First time to train**")
 
-    def save_checkpoint(self, epoch):
+    def save_checkpoint(self, epoch, is_best=False):
         tmp_name = os.path.join(self.config.root_path, self.config.checkpoint_dir,
-                                'checkpoint_{}.pth.tar'.format(epoch))
+                                'checkpoint.pth.tar'.format(epoch))
 
         state = {
             'discriminator_state_dict': self.model.state_dict(),
         }
-
+        
         torch.save(state, tmp_name)
-        shutil.copyfile(tmp_name, os.path.join(self.config.root_path, self.config.checkpoint_dir,
-                                               self.config.checkpoint_file))
+
+        if is_best:
+            shutil.copyfile(tmp_name, os.path.join(self.config.root_path, self.config.checkpoint_dir,
+                                                   'best'))
 
     def run(self):
         try:
@@ -142,21 +144,17 @@ class DiscriminatorAgent(object):
         self.summary_writer.add_image('negative/img 1', Xf[0], self.epoch)
         self.summary_writer.add_image('negative/img 2', Xf[1], self.epoch)
 
-
-
-
     def train(self):
         for _ in range(self.config.epoch):
             self.epoch += 1
             self.train_by_epoch()
 
-            if self.epoch > self.pretraining_step_size:
-                self.save_checkpoint(self.config.checkpoint_file)
-
     def train_by_epoch(self):
         tqdm_batch = tqdm(self.dataloader, total=self.total_iter, desc="epoch-{}".format(self.epoch))
 
         avg_loss = AverageMeter()
+        avg_smil = AverageMeter()
+        avg_disimil = AverageMeter()
         for curr_it, (X, X1, X2, Xf) in enumerate(tqdm_batch):
             self.model.train()
             self.opt.zero_grad()
@@ -166,23 +164,35 @@ class DiscriminatorAgent(object):
             X2 = X2.cuda(async=self.config.async_loading)
             Xf = Xf.cuda(async=self.config.async_loading)
 
-            feature_origin, feature_var1, out_var1 = self.model(X, X1)
-            _, feature_var2, out_var2 = self.model(X, X2)
-            _, feature_f, out_f = self.model(X, Xf)
+            feature_origin = self.model(X1)
+            feature_var1 = self.model(X1)
+            feature_var2 = self.model(X2)
+            feature_f = self.model(Xf)
+            
 
-            loss = self.loss([feature_origin, feature_var1, feature_var2, feature_f],
-                             [out_var1, out_var2, out_f])
+            loss, simil, disimil = self.loss([feature_origin, feature_var1, feature_var2, feature_f])
 
             loss.backward()
             self.opt.step()
+            
             avg_loss.update(loss)
+            avg_smil.update(simil)
+            avg_disimil.update(disimil)
 
             if curr_it == 4:
                 self.record_image(X, X1, X2, Xf)
 
         tqdm_batch.close()
+        
+        if self.epoch > self.pretraining_step_size:
+            flag = self._min > avg_loss.val
+            if flag:
+                self._min = avg_loss.val
+            self.save_checkpoint(self.config.checkpoint_file, flag)
 
         self.summary_writer.add_scalar('train/loss', avg_loss.val, self.epoch)
+        self.summary_writer.add_scalar('train/similarity', avg_smil.val, self.epoch)
+        self.summary_writer.add_scalar('train/disimilarity', avg_disimil.val, self.epoch)
         self.scheduler.step(avg_loss.val)
 
         with torch.no_grad():
@@ -191,6 +201,8 @@ class DiscriminatorAgent(object):
                               desc="epoch-{}".format(self.epoch))
 
             avg_loss = AverageMeter()
+            avg_smil = AverageMeter()
+            avg_disimil = AverageMeter()
             for curr_it, (X, X1, X2, Xf) in enumerate(tqdm_batch):
                 self.model.eval()
 
@@ -199,14 +211,20 @@ class DiscriminatorAgent(object):
                 X2 = X2.cuda(async=self.config.async_loading)
                 Xf = Xf.cuda(async=self.config.async_loading)
 
-                feature_origin, feature_var1, out_var1 = self.model(X, X1)
-                _, feature_var2, out_var2 = self.model(X, X2)
-                _, feature_f, out_f = self.model(X, Xf)
+                feature_origin = self.model(X1)
+                feature_var1 = self.model(X1)
+                feature_var2 = self.model(X2)
+                feature_f = self.model(Xf)
 
-                loss = self.loss([feature_origin, feature_var1, feature_var2, feature_f],
-                                 [out_var1, out_var2, out_f])
+
+                loss, simil, disimil = self.loss([feature_origin, feature_var1, feature_var2, feature_f])
+
                 avg_loss.update(loss)
+                avg_smil.update(simil)
+                avg_disimil.update(disimil)
 
             tqdm_batch.close()
 
             self.summary_writer.add_scalar('eval/loss', avg_loss.val, self.epoch)
+            self.summary_writer.add_scalar('eval/similarity', avg_smil.val, self.epoch)
+            self.summary_writer.add_scalar('eval/disimilarity', avg_disimil.val, self.epoch)
