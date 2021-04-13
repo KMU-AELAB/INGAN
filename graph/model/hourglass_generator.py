@@ -12,13 +12,13 @@ class Down(nn.Module):
         self.conv_seq = nn.Sequential(
             nn.Conv2d(_in, _in, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(_in),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(_in, _in, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(_in),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(_in, _out, kernel_size=3, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(_out),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(0.2, inplace=True),
         )
 
         self.apply(weights_init)
@@ -34,7 +34,7 @@ class Up(nn.Module):
                                          padding=1, bias=False)
         self.conv = nn.Conv2d(_in * 2, _in, kernel_size=3, stride=1, padding=1, bias=False)
 
-        self.lrelu = nn.LeakyReLU(inplace=True)
+        self.lrelu = nn.LeakyReLU(0.2, inplace=True)
 
         self.apply(weights_init)
 
@@ -73,8 +73,7 @@ class Hourglass(nn.Module):
         self.up2 = Up(64, 32)    # 128 -> 256
         self.up1 = Up(32, 1)    # 256 -> 512
 
-        self.lrelu = nn.LeakyReLU(inplace=True)
-        self.relu = nn.ReLU(inplace=True)
+        self.lrelu = nn.LeakyReLU(0.2, inplace=True)
 
         self.apply(weights_init)
 
@@ -122,8 +121,7 @@ class InHourglass(nn.Module):
         self.up1 = nn.ConvTranspose2d(in_channels=32, out_channels=1, kernel_size=4, stride=2,
                                       padding=1, bias=False)
 
-        self.lrelu = nn.LeakyReLU(inplace=True)
-        self.relu = nn.ReLU(inplace=True)
+        self.lrelu = nn.LeakyReLU(0.2, inplace=True)
 
         self.apply(weights_init)
 
@@ -137,10 +135,10 @@ class InHourglass(nn.Module):
         z = self.lrelu(self.global_conv(down5))
         up_in = self.deconv(z)
 
-        up5 = self.relu(self.up5(up_in))
-        up4 = self.relu(self.up4(up5))
-        up3 = self.relu(self.up3(up4))
-        up2 = self.relu(self.up2(up3))
+        up5 = self.lrelu(self.up5(up_in))
+        up4 = self.lrelu(self.up4(up5))
+        up3 = self.lrelu(self.up3(up4))
+        up2 = self.lrelu(self.up2(up3))
         up1 = self.up1(up2)
         
         return up1

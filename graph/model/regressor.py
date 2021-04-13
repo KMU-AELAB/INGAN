@@ -27,7 +27,7 @@ class Regressor(nn.Module):
         feature2 = self.feature_conv1(x2)
         feature3 = self.feature_conv1(x3)
 
-        feature = torch.cat((feature1, feature2, feature3), dim=1)
+        feature = torch.cat((feature1, feature2, feature3), dim=1).view(-1, 640 * 3)
 
         x = self.relu(self.linear1(feature))
         x = self.dropout(x)
