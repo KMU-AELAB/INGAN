@@ -7,30 +7,22 @@ class HourglassLoss(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.relu = nn.ReLU(inplace=True)
-        self.loss = nn.BCELoss()
         self.h_loss = nn.L1Loss()
 
     def forward(self, recons, features, disc_outs, heights):
-        valid = torch.autograd.Variable(torch.ones(disc_outs[0].size())).cuda()
-
-        # structural_loss = self.structural_loss(outputs[0], targets[0]) + (self.structural_loss(outputs[1], targets[0]) / 2) +\
-        #             (self.structural_loss(outputs[2], targets[0]) / 4) + (self.structural_loss(outputs[3], targets[0]) / 8)
-#         area_loss = self.area_loss(outputs[0], targets[0]) + (self.area_loss(outputs[1], targets[0]) / 2) +\
-#                     (self.area_loss(outputs[2], targets[0]) / 4)
-
         cosine_distance = self.cosine_distance(features[0], features[1]) +\
                           (self.cosine_distance(features[0], features[2]) / 2) +\
                           (self.cosine_distance(features[0], features[3]) / 4)
 
-        gan_loss = self.loss(disc_outs[0], valid) + self.loss(disc_outs[1], valid) + self.loss(disc_outs[2], valid)
+        area_loss = self.area_loss(recons[0], recons[1]) + (self.area_loss(recons[0], recons[2]) / 2) +\
+                    (self.area_loss(recons[0], recons[3]) / 4)
 
         h_loss = self.h_loss(heights[0], heights[1])
-        print(cosine_distance, gan_loss, h_loss)
-        return cosine_distance + gan_loss + h_loss #+ area_loss * 0.001 #+ structural_loss
+
+        return cosine_distance + area_loss + h_loss #+ area_loss * 0.001 #+ structural_loss
 
     def area_loss(self, out, target):
-        area = torch.mean(torch.abs(torch.sum(target, (1, 2, 3)) - torch.sum(out, (1, 2, 3))))
+        area = torch.mean(torch.sum(target, (1, 2, 3)) - torch.sum(out, (1, 2, 3)))
         sub_area = abs(torch.nonzero(target).size(0) - torch.nonzero(out).size(0)) / target.size(0)
         
         return area + (sub_area * 0.002)
@@ -40,13 +32,4 @@ class HourglassLoss(nn.Module):
         y_len = torch.sqrt(torch.sum(feature2 * feature2, 1))
         inner_product = torch.sum(feature1 * feature2, 1)
 
-        return (1. - torch.mean(torch.div(inner_product, x_len * y_len + 1e-8))) * 1000
-
-    # def structural_loss(self, out, target):
-    #     out = out.view(-1, 512, 512)
-    #     target = target.view(-1, 512, 512)
-    #
-    #     out_contours = cv2.findContours(out, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[-2]
-    #     target_contours = cv2.findContours(target, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[-2]
-    #
-    #     return abs(out_contours - target_contours)
+        return torch.mean(1. - torch.div(inner_product, x_len * y_len + 1e-8))
