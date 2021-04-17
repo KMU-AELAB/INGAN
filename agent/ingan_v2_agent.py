@@ -182,7 +182,7 @@ class INGANAgent(object):
             
             (out, inter_out2, inter_out1, z, z2, z1) = self.generator(X)
             pred_h = self.regressor(z, z2, z1)
-            pred_cor = self.corner(inter_out1, inter_out2, out)
+            pred_cor = self.corner(z1, z2, z)
             
             loss = self.loss([target, out, inter_out2, inter_out1],
                              [height, pred_h], [corner, pred_cor])
