@@ -67,7 +67,7 @@ class INGAN_DatasetV2(Dataset):
         target = Image.open(target_name)
         target = transforms.ToTensor()(target)
 
-        data_name = os.path.join(self.root_dir, self.config.data_path, 'dataset', self.data_list[idx] + '.png')
+        data_name = os.path.join(self.root_dir, self.config.data_path, 'dataset', self.data_list[idx][0] + '.png')
         data = Image.open(data_name)
         data = self.transform(data)
 
@@ -76,7 +76,8 @@ class INGAN_DatasetV2(Dataset):
 
         height = np.array([self.data_list[idx][1]])
 
-        corner = np.load(os.path.join(self.root_dir, self.config.data_path, 'corner', self.data_list[idx] + '.npz'))
+        corner = np.load(os.path.join(self.root_dir, self.config.data_path, 'corner', self.data_list[idx][0] + '.npy'))
+        corner = Image.fromarray(corner)
         corner = transforms.Resize((1, 1024))(corner)
         corner = transforms.ToTensor()(corner)
 
