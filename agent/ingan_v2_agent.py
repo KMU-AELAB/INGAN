@@ -13,8 +13,9 @@ from tensorboardX import SummaryWriter
 
 from graph.model.hourglass_generator import Generator
 from graph.model.regressor import Regressor
-from graph.loss.test import HourglassLoss as Loss
-from data.dataset import INGAN_Dataset
+from graph.model.corner import Corner
+from graph.loss.hourglass_loss import HourglassLossV2 as Loss
+from data.dataset import INGAN_DatasetV2 as INGAN_Dataset
 
 from utils.metrics import AverageMeter
 from utils.train_utils import set_logger, count_model_prameters
@@ -52,6 +53,7 @@ class INGANAgent(object):
         # define models
         self.generator = Generator().cuda()
         self.regressor = Regressor().cuda()
+        self.corner = Corner().cuda()
 
         # define loss
         self.loss = Loss().cuda()
@@ -61,7 +63,8 @@ class INGANAgent(object):
 
         # define optimizer
         self.opt = torch.optim.Adam([{'params': self.generator.parameters()},
-                                     {'params': self.regressor.parameters()},],
+                                     {'params': self.regressor.parameters()},
+                                     {'params': self.corner.parameters()},],
                                     lr=self.lr)
 
         # define optimize scheduler
@@ -82,6 +85,7 @@ class INGANAgent(object):
         gpu_list = list(range(self.config.gpu_cnt))
         self.generator = nn.DataParallel(self.generator, device_ids=gpu_list)
         self.regressor = nn.DataParallel(self.regressor, device_ids=gpu_list)
+        self.corner = nn.DataParallel(self.corner, device_ids=gpu_list)
 
         # Model Loading from the latest checkpoint if not found start from scratch.
         self.load_checkpoint(self.config.checkpoint_file)
@@ -95,13 +99,15 @@ class INGANAgent(object):
         print("seed: ", self.manual_seed)
         print('Number of generator parameters: {}'.format(count_model_prameters(self.generator)))
         print('Number of regressor parameters: {}'.format(count_model_prameters(self.regressor)))
+        print('Number of corner parameters: {}'.format(count_model_prameters(self.corner)))
 
     def collate_function(self, samples):
         X = torch.cat([sample['X'].view(-1, 3, 512, 1024) for sample in samples], axis=0)
         target = torch.cat([sample['target'].view(-1, 1, 512, 512) for sample in samples], axis=0)
         height = torch.cat([sample['height'] for sample in samples], axis=0)
+        corner = torch.cat([sample['corner'].view((1, 1, 1024)) for sample in samples], axis=0)
 
-        return tuple([X, target, height])
+        return tuple([X, target, height, corner])
 
     def load_checkpoint(self, file_name):
         filename = os.path.join(self.config.root_path, self.config.checkpoint_dir, file_name)
@@ -111,6 +117,7 @@ class INGANAgent(object):
 
             self.generator.load_state_dict(checkpoint['generator_state_dict'])
             self.regressor.load_state_dict(checkpoint['regressor_state_dict'])
+            self.corner.load_state_dict(checkpoint['corner_state_dict'])
 
         except OSError as e:
             print("No checkpoint exists from '{}'. Skipping...".format(self.config.checkpoint_dir))
@@ -123,6 +130,7 @@ class INGANAgent(object):
         state = {
             'generator_state_dict': self.generator.state_dict(),
             'regressor_state_dict': self.regressor.state_dict(),
+            'corner_state_dict': self.corner.state_dict(),
         }
 
         torch.save(state, tmp_name)
@@ -161,20 +169,23 @@ class INGANAgent(object):
         tqdm_batch = tqdm(self.dataloader, total=self.total_iter, desc="epoch-{}".format(self.epoch))
 
         avg_loss = AverageMeter()
-        for curr_it, (X, target, height) in enumerate(tqdm_batch):
+        for curr_it, (X, target, height, corner) in enumerate(tqdm_batch):
             self.generator.train()
             self.regressor.train()
+            self.corner.train()
             self.opt.zero_grad()
 
             X = X.cuda(async=self.config.async_loading)
             target = target.cuda(async=self.config.async_loading)
             height = height.cuda(async=self.config.async_loading)
+            corner = corner.cuda(async=self.config.async_loading)
             
             (out, inter_out2, inter_out1, z, z2, z1) = self.generator(X)
             pred_h = self.regressor(z, z2, z1)
+            pred_cor = self.corner(inter_out1, inter_out2, out)
             
             loss = self.loss([target, out, inter_out2, inter_out1],
-                             [height, pred_h])
+                             [height, pred_h], [corner, pred_cor])
 
             loss.backward()
             self.opt.step()
@@ -194,19 +205,22 @@ class INGANAgent(object):
                               desc="epoch-{}".format(self.epoch))
 
             avg_loss = AverageMeter()
-            for curr_it, (X, target, height) in enumerate(tqdm_batch):
+            for curr_it, (X, target, height, corner) in enumerate(tqdm_batch):
                 self.generator.eval()
                 self.regressor.eval()
+                self.corner.eval()
 
                 X = X.cuda(async=self.config.async_loading)
                 target = target.cuda(async=self.config.async_loading)
                 height = height.cuda(async=self.config.async_loading)
+                corner = corner.cuda(async=self.config.async_loading)
 
                 (out, inter_out2, inter_out1, z, z2, z1) = self.generator(X)
                 pred_h = self.regressor(z, z2, z1)
+                pred_cor = self.corner(inter_out1, inter_out2, out)
 
                 loss = self.loss([target, out, inter_out2, inter_out1],
-                                 [height, pred_h])
+                                 [height, pred_h], [corner, pred_cor])
 
                 avg_loss.update(loss)
 

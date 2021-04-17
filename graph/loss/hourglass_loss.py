@@ -32,3 +32,20 @@ class HourglassLoss(nn.Module):
         inner_product = torch.sum(feature1 * feature2, 1)
 
         return torch.mean(1. - torch.div(inner_product, x_len * y_len + 1e-8))
+
+
+class HourglassLossV2(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.loss = nn.BCELoss()
+        self.h_loss = nn.L1Loss()
+
+    def forward(self, recons, height, corner):
+        area_loss = self.loss(recons[1], recons[0]) + (self.loss(recons[2], recons[0]) / 2) + \
+                    (self.loss(recons[3], recons[0]) / 4)
+
+        h_loss = self.h_loss(height[1], height[0].view(-1, 1))
+        c_loss = self.loss(corner[1], corner[0])
+
+        return (area_loss) + (h_loss) * 0.01 + c_loss
