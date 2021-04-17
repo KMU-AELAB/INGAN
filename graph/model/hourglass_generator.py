@@ -93,7 +93,7 @@ class Hourglass(nn.Module):
         up2 = self.lrelu(self.up2(up3, down2))
         up1 = self.up1(up2, down1)
         
-        return up1
+        return up1, z
 
 
 class InHourglass(nn.Module):
@@ -141,7 +141,7 @@ class InHourglass(nn.Module):
         up2 = self.lrelu(self.up2(up3))
         up1 = self.up1(up2)
         
-        return up1
+        return up1, z
 
 
 class Generator(nn.Module):
@@ -157,8 +157,13 @@ class Generator(nn.Module):
         self.apply(weights_init)
 
     def forward(self, x):
-        out1 = self.sigmoid(self.in_hourglass(x))
-        out2 = self.sigmoid(self.hourglass1(out1))
-        output = self.sigmoid(self.hourglass2(out2))
+        out1, z1 = self.in_hourglass(x)
+        out1 = self.sigmoid(out1)
         
-        return (output, out2, out1)
+        out2, z2 = self.hourglass1(out1)
+        out2 = self.sigmoid(out2)
+        
+        out3, z = self.hourglass2(out2)
+        output = self.sigmoid(out3)
+        
+        return (output, out2, out1, z, z2, z1)

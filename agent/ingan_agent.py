@@ -53,7 +53,6 @@ class INGANAgent(object):
         # define models
         self.generator = Generator().cuda()
         self.regressor = Regressor().cuda()
-        self.discriminator = Discriminator().cuda()
 
         # define loss
         self.loss = Loss().cuda()
@@ -84,7 +83,6 @@ class INGANAgent(object):
         gpu_list = list(range(self.config.gpu_cnt))
         self.generator = nn.DataParallel(self.generator, device_ids=gpu_list)
         self.regressor = nn.DataParallel(self.regressor, device_ids=gpu_list)
-        self.discriminator = nn.DataParallel(self.discriminator, device_ids=gpu_list)
 
         # Model Loading from the latest checkpoint if not found start from scratch.
         self.load_checkpoint(self.config.checkpoint_file)
@@ -98,7 +96,6 @@ class INGANAgent(object):
         print("seed: ", self.manual_seed)
         print('Number of generator parameters: {}'.format(count_model_prameters(self.generator)))
         print('Number of regressor parameters: {}'.format(count_model_prameters(self.regressor)))
-        print('Number of discriminator parameters: {}'.format(count_model_prameters(self.discriminator)))
 
     def collate_function(self, samples):
         X = torch.cat([sample['X'].view(-1, 3, 512, 1024) for sample in samples], axis=0)
@@ -113,18 +110,11 @@ class INGANAgent(object):
             print("Loading checkpoint '{}'".format(filename))
             checkpoint = torch.load(filename)
 
-            self.discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
             self.generator.load_state_dict(checkpoint['generator_state_dict'])
             self.regressor.load_state_dict(checkpoint['regressor_state_dict'])
 
         except OSError as e:
             print("No checkpoint exists from '{}'. Skipping...".format(self.config.checkpoint_dir))
-            filename = os.path.join(self.config.root_path, self.config.checkpoint_dir, 'discriminator.pth.tar')
-            print("Loading checkpoint '{}'".format(filename))
-
-            checkpoint = torch.load(filename)
-            self.discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
-
             print("**First time to train**")
 
     def save_checkpoint(self, epoch):
@@ -133,7 +123,6 @@ class INGANAgent(object):
 
         state = {
             'generator_state_dict': self.generator.state_dict(),
-            'discriminator_state_dict': self.discriminator.state_dict(),
             'regressor_state_dict': self.regressor.state_dict(),
         }
 
@@ -176,23 +165,22 @@ class INGANAgent(object):
         for curr_it, (X, target, height) in enumerate(tqdm_batch):
             self.generator.train()
             self.regressor.train()
-            self.discriminator.eval()
             self.opt.zero_grad()
 
             X = X.cuda(async=self.config.async_loading)
             target = target.cuda(async=self.config.async_loading)
             height = height.cuda(async=self.config.async_loading)
             
-            out, inter_out2, inter_out1 = self.generator(X)
-            pred_h = self.regressor(out, inter_out1, inter_out2)
+            (out, inter_out2, inter_out1, z, z2, z1) = self.generator(X)
+            pred_h = self.regressor(z, z2, z1)
 
-            feature_origin, feature_out, disc_out = self.discriminator(target, out)
-            _, feature_inter2, disc_inter2 = self.discriminator(target, inter_out2)
-            _, feature_inter1, disc_inter1 = self.discriminator(target, inter_out1)
+            feature_origin = self.discriminator(target)
+            feature_out = self.discriminator(out)
+            feature_inter2 = self.discriminator(inter_out2)
+            feature_inter1 = self.discriminator(inter_out1)
 
             loss = self.loss([target, out, inter_out2, inter_out1],
                              [feature_origin, feature_out, feature_inter2, feature_inter1],
-                             [disc_out, disc_inter2, disc_inter1],
                              [height, pred_h])
 
             loss.backward()
@@ -216,23 +204,21 @@ class INGANAgent(object):
             for curr_it, (X, target, height) in enumerate(tqdm_batch):
                 self.generator.eval()
                 self.regressor.eval()
-                self.discriminator.eval()
 
                 X = X.cuda(async=self.config.async_loading)
                 target = target.cuda(async=self.config.async_loading)
                 height = height.cuda(async=self.config.async_loading)
 
-                out, inter_out2, inter_out1 = self.generator(X)
+                (out, inter_out2, inter_out1, z, z2, z1) = self.generator(X)
+                pred_h = self.regressor(z, z2, z1)
 
-                pred_h = self.regressor(out, inter_out1, inter_out2)
-
-                feature_origin, feature_out, disc_out = self.discriminator(target, out)
-                _, feature_inter2, disc_inter2 = self.discriminator(target, inter_out2)
-                _, feature_inter1, disc_inter1 = self.discriminator(target, inter_out1)
+                feature_origin = self.discriminator(target)
+                feature_out = self.discriminator(out)
+                feature_inter2 = self.discriminator(inter_out2)
+                feature_inter1 = self.discriminator(inter_out1)
 
                 loss = self.loss([target, out, inter_out2, inter_out1],
                                  [feature_origin, feature_out, feature_inter2, feature_inter1],
-                                 [disc_out, disc_inter2, disc_inter1],
                                  [height, pred_h])
 
                 avg_loss.update(loss)

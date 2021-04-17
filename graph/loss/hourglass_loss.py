@@ -9,7 +9,7 @@ class HourglassLoss(nn.Module):
 
         self.h_loss = nn.L1Loss()
 
-    def forward(self, recons, features, disc_outs, heights):
+    def forward(self, recons, features, heights):
         cosine_distance = self.cosine_distance(features[0], features[1]) +\
                           (self.cosine_distance(features[0], features[2]) / 2) +\
                           (self.cosine_distance(features[0], features[3]) / 4)
@@ -17,15 +17,14 @@ class HourglassLoss(nn.Module):
         area_loss = self.area_loss(recons[0], recons[1]) + (self.area_loss(recons[0], recons[2]) / 2) +\
                     (self.area_loss(recons[0], recons[3]) / 4)
 
-        h_loss = self.h_loss(heights[0], heights[1])
-
-        return cosine_distance + area_loss + h_loss #+ area_loss * 0.001 #+ structural_loss
+        h_loss = self.h_loss(heights[0].view(-1, 1), heights[1])
+#         print(cosine_distance, area_loss, h_loss, '!!!!!!!!!!!')
+        return cosine_distance * 2 + (area_loss * 0.0002) + (h_loss * 0.2)
 
     def area_loss(self, out, target):
-        area = torch.mean(torch.sum(target, (1, 2, 3)) - torch.sum(out, (1, 2, 3)))
-        sub_area = abs(torch.nonzero(target).size(0) - torch.nonzero(out).size(0)) / target.size(0)
+        area = torch.mean(torch.abs(torch.sum(target, (1, 2, 3)) - torch.sum(out, (1, 2, 3))))
         
-        return area + (sub_area * 0.002)
+        return area
 
     def cosine_distance(self, feature1, feature2):
         x_len = torch.sqrt(torch.sum(feature1 * feature1, 1))
