@@ -38,7 +38,7 @@ class ReduceBlock(nn.Module):
             nn.Conv2d(_in, _in, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(_in),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(_in, _out, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.Conv2d(_in, _out, kernel_size=3, stride=[2, 1], padding=1, bias=False),
             nn.BatchNorm2d(_out),
             nn.LeakyReLU(0.2, inplace=True),
         )
@@ -90,12 +90,15 @@ class FeatureExtract(nn.Module):
         inter_64 = self.block2(inter_128)
         inter_32 = self.block3(inter_64)
         inter_16 = self.block4(inter_32)
-
+        
         reduce1 = self.reduce1(inter_128).view(-1, 256, 1, 256)
-        reduce2 = self.reduce2(inter_64).view(-1, 256, 1, 256)
-        reduce3 = self.reduce3(inter_32).view(-1, 256, 1, 256)
-        reduce4 = self.reduce4(inter_16).view(-1, 256, 1, 256)
-
+        reduce2 = F.interpolate(self.reduce2(inter_64), size=(4, 256),
+                                mode='bilinear', align_corners=False).view(-1, 256, 1, 256)
+        reduce3 = F.interpolate(self.reduce3(inter_32), size=(2, 256),
+                                mode='bilinear', align_corners=False).view(-1, 256, 1, 256)
+        reduce4 = F.interpolate(self.reduce4(inter_16), size=(1, 256),
+                                mode='bilinear', align_corners=False).view(-1, 256, 1, 256)
+        
         feature = torch.cat((reduce1, reduce2, reduce3, reduce4), dim=1)    # 1024 1 256
         feature = feature.reshape(-1, 1024, 256).permute(2, 0, 1)
 
@@ -108,7 +111,7 @@ class HorizonBase(nn.Module):
 
         self.feature_extract = FeatureExtract()
 
-        self.lstm = nn.LSTM(input_size=256,
+        self.lstm = nn.LSTM(input_size=1024,
                             hidden_size=512,
                             num_layers=2,
                             dropout=0.5,
@@ -116,7 +119,7 @@ class HorizonBase(nn.Module):
                             bidirectional=True)
         self.drop_out = nn.Dropout(0.5)
 
-        self.linear = nn.Linear(in_features=2 * self.rnn_hidden_size,
+        self.linear = nn.Linear(in_features=2 * 512,
                                 out_features=12)
 
         self.lrelu = nn.LeakyReLU(0.2, inplace=True)
@@ -127,6 +130,7 @@ class HorizonBase(nn.Module):
         batch_size = x.size(0)
 
         feature = self.feature_extract(x)
+        
         output, _ = self.lstm(feature)  # 256 b 1024
 
         output = self.lrelu(self.linear(output))
@@ -140,27 +144,21 @@ class Corner(nn.Module):
     def __init__(self):
         super(Corner, self).__init__()
 
-        self.horizon_base = HorizonBase()   # b 3 256 4
-
         self.conv = nn.Conv2d(3, 1, kernel_size=[1, 3], stride=1, padding=[0, 1], bias=False)
-
         self.sigmoid = nn.Sigmoid()
 
         self.apply(weights_init)
 
-    def forward(self, x):
-        horizon_output = self.horizon_base(x)
-        horizon_output = horizon_output.contiguous().view(horizon_output, 3, 1, -1) # b 3 1 1024
+    def forward(self, horizon_output):
+        horizon_output = horizon_output.contiguous().view(horizon_output.size(0), 3, 1, -1) # b 3 1 1024
         corner = self.sigmoid(self.conv(horizon_output))
 
-        return corner
+        return corner.view(-1, 1, 1024)
 
 
 class FloorMap(nn.Module):
     def __init__(self):
         super().__init__()
-
-        self.horizon_base = HorizonBase()   # b 3 256 4
 
         self.deconv_1 = nn.ConvTranspose2d(in_channels=3, out_channels=3, kernel_size=[1, 8], stride=[1, 8], bias=False)
         self.deconv_2 = nn.ConvTranspose2d(in_channels=3, out_channels=2, kernel_size=[1, 8], stride=[1, 8], bias=False)
@@ -172,9 +170,7 @@ class FloorMap(nn.Module):
 
         self.apply(weights_init)
 
-    def forward(self, x):
-        horizon_output = self.horizon_base(x)      # b 3 256 4
-
+    def forward(self, horizon_output):
         output = self.lrelu(self.deconv_1(horizon_output))
         output = self.lrelu(self.deconv_2(output))
         output = self.sigmoid(self.deconv_3(output))

@@ -12,8 +12,6 @@ from torchvision import transforms
 from tensorboardX import SummaryWriter
 
 from graph.model.horizon_base import HorizonBase, Corner
-from graph.model.regressor import Regressor
-from graph.model.corner import Corner
 from graph.loss.hourglass_loss import HourglassLossV2 as Loss
 from data.dataset import INGAN_DatasetV3 as INGAN_Dataset
 
