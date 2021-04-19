@@ -10,25 +10,14 @@ class Up(nn.Module):
         super(Up, self).__init__()
 
         self.deconv = nn.ConvTranspose2d(in_channels=_in, out_channels=_out, kernel_size=[1, 4], stride=[1, 2],
-                                         padding=1, bias=False)
-        self.conv = nn.Conv2d(_in * 2, _in, kernel_size=3, stride=1, padding=1, bias=False)
-
-        self.lrelu = nn.LeakyReLU(0.2, inplace=True)
+                                         padding=[0, 1], bias=False)
+        self.norm = nn.BatchNorm2d(_out)
 
         self.apply(weights_init)
 
-    def forward(self, x1, x2):
-        # add padding
-        diff_y = x2.size()[2] - x1.size()[2]
-        diff_x = x2.size()[3] - x1.size()[3]
-
-        x1 = F.pad(x1, [diff_x // 2, diff_x - diff_x // 2,
-                        diff_y // 2, diff_y - diff_y // 2])
-
-        x = torch.cat([x2, x1], dim=1)
-
-        x = self.lrelu(self.conv(x))
+    def forward(self, x):
         x = self.deconv(x)
+        x = self.norm(x)
 
         return x
 
@@ -39,9 +28,9 @@ class CornerModule(nn.Module):
 
         self.deconv = nn.ConvTranspose2d(in_channels=1024, out_channels=512, kernel_size=[1, 32], stride=[1, 32],
                                          bias=False)
-
-        self.up1 = Up(1536, 512)  # 16 -> 32
-        self.up2 = Up(512, 192)  # 32 -> 64
+        
+        self.up1 = Up(1536, 592)  # 16 -> 32
+        self.up2 = Up(592, 192)  # 32 -> 64
         self.up3 = Up(192, 64)  # 64 -> 128
         self.up4 = Up(64, 32)  # 128 -> 256
         self.up5 = Up(32, 1)  # 256 -> 512
@@ -55,16 +44,16 @@ class CornerModule(nn.Module):
         x1 = self.lrelu(self.deconv(x1))
         x2 = self.lrelu(self.deconv(x2))
         x3 = self.lrelu(self.deconv(x3))
-
+        
         x = torch.cat((x1, x2, x3), dim=1)
-
+        
         up1 = self.lrelu(self.up1(x))
         up2 = self.lrelu(self.up2(up1))
         up3 = self.lrelu(self.up3(up2))
         up4 = self.lrelu(self.up4(up3))
-        up5 = self.up5(up4)
+        up5 = self.sigmoid(self.up5(up4))
         
-        return self.sigmoid(up5)
+        return up5
 
 
 class Corner(nn.Module):

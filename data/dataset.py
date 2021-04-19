@@ -70,15 +70,17 @@ class INGAN_DatasetV2(Dataset):
         data_name = os.path.join(self.root_dir, self.config.data_path, 'dataset', self.data_list[idx][0] + '.png')
         data = Image.open(data_name)
         data = self.transform(data)
-
-        if random.random() < 0.5:
-            data = torch.roll(data, random.randint(10, 700), dims=2)
-
-        height = np.array([self.data_list[idx][1]])
-
+        
         corner = np.load(os.path.join(self.root_dir, self.config.data_path, 'corner', self.data_list[idx][0] + '.npy'))
         corner = Image.fromarray(corner)
         corner = transforms.Resize((1, 1024))(corner)
         corner = transforms.ToTensor()(corner)
+
+        if random.random() < 0.5:
+            r_size = random.randint(10, 700)
+            data = torch.roll(data, r_size, dims=2)
+            corner = torch.roll(corner, r_size, dims=2)
+
+        height = np.array([self.data_list[idx][1]])
 
         return {'X': data, 'target': target, 'height': torch.from_numpy(height), 'corner': corner}

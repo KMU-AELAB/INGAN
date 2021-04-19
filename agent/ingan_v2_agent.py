@@ -144,7 +144,7 @@ class INGANAgent(object):
         except KeyboardInterrupt:
             print("You have entered CTRL+C.. Wait to finalize")
 
-    def record_image(self, X, out, target, step='train'):
+    def record_image(self, X, out, target, c_out, c_target, step='train'):
         self.summary_writer.add_image(step + '/img 1', X[0], self.epoch)
         self.summary_writer.add_image(step + '/img 2', X[1], self.epoch)
         self.summary_writer.add_image(step + '/img 3', X[2], self.epoch)
@@ -156,6 +156,20 @@ class INGANAgent(object):
         self.summary_writer.add_image(step + '/target 1', target[0], self.epoch)
         self.summary_writer.add_image(step + '/target 2', target[1], self.epoch)
         self.summary_writer.add_image(step + '/target 3', target[2], self.epoch)
+        
+        self.summary_writer.add_image(step + '/corner_result 1',
+                                      c_out[0].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1), self.epoch)
+        self.summary_writer.add_image(step + '/corner_result 2',
+                                      c_out[1].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1), self.epoch)
+        self.summary_writer.add_image(step + '/corner_result 3',
+                                      c_out[2].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1), self.epoch)
+        
+        self.summary_writer.add_image(step + '/corner_target 1',
+                                      c_target[0].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1), self.epoch)
+        self.summary_writer.add_image(step + '/corner_target 2',
+                                      c_target[1].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1), self.epoch)
+        self.summary_writer.add_image(step + '/corner_target 3',
+                                      c_target[2].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1), self.epoch)
 
     def train(self):
         for _ in range(self.config.epoch):
@@ -192,7 +206,7 @@ class INGANAgent(object):
             avg_loss.update(loss)
 
             if curr_it == 4:
-                self.record_image(X, out, target)
+                self.record_image(X, out, target, pred_cor, corner)
 
         tqdm_batch.close()
 
@@ -217,7 +231,7 @@ class INGANAgent(object):
 
                 (out, inter_out2, inter_out1, z, z2, z1) = self.generator(X)
                 pred_h = self.regressor(z, z2, z1)
-                pred_cor = self.corner(inter_out1, inter_out2, out)
+                pred_cor = self.corner(z1, z2, z)
 
                 loss = self.loss([target, out, inter_out2, inter_out1],
                                  [height, pred_h], [corner, pred_cor])
@@ -225,7 +239,7 @@ class INGANAgent(object):
                 avg_loss.update(loss)
 
                 if curr_it == 2:
-                    self.record_image(X, out, target, 'test')
+                    self.record_image(X, out, target, pred_cor, corner, 'test')
 
             tqdm_batch.close()
 
