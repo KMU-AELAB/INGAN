@@ -12,7 +12,7 @@ from torchvision import transforms
 from tensorboardX import SummaryWriter
 
 from graph.model.horizon_base import HorizonBase, Corner
-from graph.loss.hourglass_loss import HourglassLossV2 as Loss
+from graph.loss.horizon_base_loss import HorizonBaseLoss as Loss
 from data.dataset import INGAN_DatasetV3 as INGAN_Dataset
 
 from utils.metrics import AverageMeter
