@@ -31,7 +31,7 @@ class INGANAgent(object):
             transforms.Resize((512, 1024)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            transforms.RandomErasing(p=0.2, scale=(0.02, 0.04), ratio=(0.5, 1.5)),
+            transforms.RandomErasing(p=0.5, scale=(0.02, 0.04), ratio=(0.5, 1.5)),
         ])
 
         self.pretraining_step_size = self.config.pretraining_step_size

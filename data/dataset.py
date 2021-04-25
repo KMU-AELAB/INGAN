@@ -105,25 +105,37 @@ class INGAN_DatasetV3(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
+            
+        flip, roll = random.random() < 0.5, random.random() < 0.5
 
         data_name = os.path.join(self.root_dir, self.config.data_path, 'dataset', self.data_list[idx][0] + '.png')
         data = Image.open(data_name)
-        data = self.transform(data)
+        data = transforms.Resize((512, 1024))(data)
 
         corner = np.load(os.path.join(self.root_dir, self.config.data_path, 'corner', self.data_list[idx][0] + '.npy'))
         corner = Image.fromarray(corner)
         corner = transforms.Resize((1, 1024))(corner)
+
+        if flip:
+            data = transforms.RandomHorizontalFlip(p=1.0)(data)
+            corner = transforms.RandomHorizontalFlip(p=1.0)(corner)
+
+        data = transforms.ToTensor()(data)
         corner = transforms.ToTensor()(corner)
 
-        if random.random() < 0.5:
+        if roll:
             r_size = random.randint(10, 700)
             data = torch.roll(data, r_size, dims=2)
             corner = torch.roll(corner, r_size, dims=2)
+            
+        data = transforms.RandomErasing(p=0.5, scale=(0.02, 0.04), ratio=(0.5, 1.5))(data)
 
         if not self.is_pretrain:
             target_name = os.path.join(self.root_dir, self.config.data_path, 'discriminator_data',
                                        self.data_list[idx][0] + '.png')
             target = Image.open(target_name)
+            if flip:
+                target = transforms.RandomHorizontalFlip(p=1.0)(target)
             target = transforms.ToTensor()(target)
 
             height = np.array([self.data_list[idx][1]])

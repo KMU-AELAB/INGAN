@@ -132,6 +132,7 @@ class HorizonBase(nn.Module):
         feature = self.feature_extract(x)
         
         output, _ = self.lstm(feature)  # 256 b 1024
+        output = self.drop_out(output)
 
         output = self.lrelu(self.linear(output))
         output = output.view(256, batch_size, 3, 4) # 256 b 12
@@ -144,15 +145,20 @@ class Corner(nn.Module):
     def __init__(self):
         super(Corner, self).__init__()
 
-        self.conv = nn.Conv2d(3, 1, kernel_size=[1, 3], stride=1, padding=[0, 1], bias=False)
+        self.conv1 = nn.Conv2d(3, 2, kernel_size=[1, 3], stride=1, padding=[0, 1], bias=False)
+        self.conv2 = nn.Conv2d(2, 1, kernel_size=[1, 3], stride=1, padding=[0, 1], bias=False)
+        
+        self.lrelu = nn.LeakyReLU(0.2, inplace=True)
         self.sigmoid = nn.Sigmoid()
 
         self.apply(weights_init)
 
     def forward(self, horizon_output):
         horizon_output = horizon_output.contiguous().view(horizon_output.size(0), 3, 1, -1) # b 3 1 1024
-        corner = self.sigmoid(self.conv(horizon_output))
-
+        
+        corner = self.lrelu(self.conv1(horizon_output))
+        corner = self.sigmoid(self.conv2(corner))
+        
         return corner.view(-1, 1, 1024)
 
 

@@ -8,6 +8,13 @@ class HorizonBaseLoss(nn.Module):
         super().__init__()
 
         self.loss = nn.BCELoss()
+        self.relu = nn.ReLU(inplace=True)
 
     def forward(self, target, output):
-        return self.loss(output, target)
+        loss = self.loss(output, target)
+
+        ones, zeros = torch.ones(target.size()).cuda(), torch.zeros(target.size()).cuda()
+        sub_loss = self.loss(torch.where(output > 0.5, ones, zeros),
+                             target)
+
+        return loss + sub_loss * 0.2
