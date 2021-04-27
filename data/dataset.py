@@ -7,6 +7,8 @@ import torch
 from torchvision import transforms
 from torch.utils.data import Dataset
 
+import util
+
 
 class INGAN_Dataset(Dataset):
     def __init__(self,config, torchvision_transform, is_test=False):
@@ -106,31 +108,59 @@ class INGAN_DatasetV3(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
             
-        flip, roll = random.random() < 0.5, random.random() < 0.5
+        flip, roll, gamma = random.random() < 0.5, random.random() < 0.5, random.random() < 0.5
 
         data_name = os.path.join(self.root_dir, self.config.data_path, 'dataset', self.data_list[idx][0] + '.png')
         data = Image.open(data_name)
         data = transforms.Resize((512, 1024))(data)
 
-        corner = np.load(os.path.join(self.root_dir, self.config.data_path, 'corner', self.data_list[idx][0] + '.npy'))
-        corner = Image.fromarray(corner)
-        corner = transforms.Resize((1, 1024))(corner)
+        data = transforms.ToTensor()(data)
+
+        r_size = random.randint(10, 700)
+        if roll:
+            data = torch.roll(data, r_size, dims=2)
+
+        if gamma:
+            p = np.random.uniform(1, 2)
+            if np.random.randint(2) == 0:
+                p = 1 / p
+            data = data ** p
 
         if flip:
             data = transforms.RandomHorizontalFlip(p=1.0)(data)
-            corner = transforms.RandomHorizontalFlip(p=1.0)(corner)
 
-        data = transforms.ToTensor()(data)
-        corner = transforms.ToTensor()(corner)
-
-        if roll:
-            r_size = random.randint(10, 700)
-            data = torch.roll(data, r_size, dims=2)
-            corner = torch.roll(corner, r_size, dims=2)
-            
         data = transforms.RandomErasing(p=0.5, scale=(0.02, 0.04), ratio=(0.5, 1.5))(data)
 
-        if not self.is_pretrain:
+        if self.is_pretrain:
+            stretch = random.random() < 0.5
+            corner = np.load(os.path.join(self.root_dir, self.config.data_path, 'corner', self.data_list[idx][0] + '.npy'))
+            corner = Image.fromarray(corner)
+            corner = transforms.Resize((1, 1024))(corner)
+
+            if flip:
+                corner = transforms.RandomHorizontalFlip(p=1.0)(corner)
+
+            corner = transforms.ToTensor()(corner)
+
+            corner = torch.roll(corner, r_size, dims=2)
+
+            if stretch:
+                xmin, ymin, xmax, ymax = util.cor2xybound(corner)
+                kx = np.random.uniform(1.0, 2.)
+                ky = np.random.uniform(1.0, 2.)
+                if np.random.randint(2) == 0:
+                    kx = max(1 / kx, min(0.5 / xmin, 1.0))
+                else:
+                    kx = min(kx, max(10.0 / xmax, 1.0))
+                if np.random.randint(2) == 0:
+                    ky = max(1 / ky, min(0.5 / ymin, 1.0))
+                else:
+                    ky = min(ky, max(10.0 / ymax, 1.0))
+                data, corner = util.panostretch.pano_stretch(data, corner, kx, ky)
+
+            return {'X': data, 'corner': corner}
+
+        else:
             target_name = os.path.join(self.root_dir, self.config.data_path, 'discriminator_data',
                                        self.data_list[idx][0] + '.png')
             target = Image.open(target_name)
@@ -140,6 +170,5 @@ class INGAN_DatasetV3(Dataset):
 
             height = np.array([self.data_list[idx][1]])
 
-            return {'X': data, 'floor': target, 'height': torch.from_numpy(height), 'corner': corner}
+            return {'X': data, 'floor': target, 'height': torch.from_numpy(height)}
 
-        return {'X': data, 'corner': corner}
