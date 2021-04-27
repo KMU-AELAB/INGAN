@@ -83,7 +83,7 @@ class INGAN_DatasetV2(Dataset):
 
         height = np.array([self.data_list[idx][1]])
 
-        return {'X': data, 'floor': target, 'height': torch.from_numpy(height), 'corner': corner}
+        return {'X': data, 'target': target, 'height': torch.from_numpy(height), 'corner': corner}
 
 
 class INGAN_DatasetV3(Dataset):
@@ -140,6 +140,6 @@ class INGAN_DatasetV3(Dataset):
 
             height = np.array([self.data_list[idx][1]])
 
-            return {'X': data, 'target': target, 'height': torch.from_numpy(height), 'corner': corner}
+            return {'X': data, 'floor': target, 'height': torch.from_numpy(height), 'corner': corner}
 
         return {'X': data, 'corner': corner}

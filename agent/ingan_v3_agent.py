@@ -12,14 +12,14 @@ from torchvision import transforms
 from tensorboardX import SummaryWriter
 
 from graph.model.horizon_base import HorizonBase, FloorMap
-from graph.loss.hourglass_loss import HourglassLossV2 as Loss
+from graph.loss.horizon_base_loss import HorizonBaseLoss as Loss
 from data.dataset import INGAN_DatasetV3 as INGAN_Dataset
 
 from utils.metrics import AverageMeter
 from utils.train_utils import set_logger, count_model_prameters
 
 cudnn.benchmark = True
-
+torch.backends.cudnn.enabled = False
 
 class INGANAgent(object):
     def __init__(self, config):
@@ -40,11 +40,11 @@ class INGANAgent(object):
         self.logger = set_logger('train_epoch.log')
 
         # define dataloader
-        self.dataset = INGAN_Dataset(self.config, self.torchvision_transform, False, True)
+        self.dataset = INGAN_Dataset(self.config, self.torchvision_transform, False)
         self.dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers=2,
                                      pin_memory=self.config.pin_memory, collate_fn=self.collate_function)
 
-        self.dataset_test = INGAN_Dataset(self.config, self.torchvision_transform, True, True)
+        self.dataset_test = INGAN_Dataset(self.config, self.torchvision_transform, True)
         self.testloader = DataLoader(self.dataset_test, batch_size=self.batch_size, shuffle=False, num_workers=1,
                                      pin_memory=self.config.pin_memory, collate_fn=self.collate_function)
 
@@ -97,7 +97,7 @@ class INGANAgent(object):
 
     def collate_function(self, samples):
         X = torch.cat([sample['X'].view(-1, 3, 512, 1024) for sample in samples], axis=0)
-        floor = torch.cat([sample['floor'].view((1, 1, 1024)) for sample in samples], axis=0)
+        floor = torch.cat([sample['floor'].view((-1, 1, 512, 512)) for sample in samples], axis=0)
 
         return tuple([X, floor])
 
@@ -113,6 +113,9 @@ class INGANAgent(object):
         except OSError as e:
             print("No checkpoint exists from '{}'. Skipping...".format(self.config.checkpoint_dir))
             print("**First time to train**")
+            filename = os.path.join(self.config.root_path, self.config.checkpoint_dir, 'pretrain.pth.tar')
+            checkpoint = torch.load(filename)
+            self.feature.load_state_dict(checkpoint['feature_state_dict'])
 
     def save_checkpoint(self, epoch):
         tmp_name = os.path.join(self.config.root_path, self.config.checkpoint_dir,
@@ -139,19 +142,13 @@ class INGANAgent(object):
         self.summary_writer.add_image(step + '/img 2', X[1], self.epoch)
         self.summary_writer.add_image(step + '/img 3', X[2], self.epoch)
 
-        self.summary_writer.add_image(step + '/result 1', out[0].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1),
-                                      self.epoch)
-        self.summary_writer.add_image(step + '/result 2', out[1].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1),
-                                      self.epoch)
-        self.summary_writer.add_image(step + '/result 3', out[2].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1),
-                                      self.epoch)
+        self.summary_writer.add_image(step + '/result 1', out[0], self.epoch)
+        self.summary_writer.add_image(step + '/result 2', out[1], self.epoch)
+        self.summary_writer.add_image(step + '/result 3', out[2], self.epoch)
 
-        self.summary_writer.add_image(step + '/target 1', target[0].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1),
-                                      self.epoch)
-        self.summary_writer.add_image(step + '/target 2', target[1].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1),
-                                      self.epoch)
-        self.summary_writer.add_image(step + '/target 3', target[2].view(1, 1024, 1).permute(0, 2, 1).repeat(1, 200, 1),
-                                      self.epoch)
+        self.summary_writer.add_image(step + '/target 1', target[0], self.epoch)
+        self.summary_writer.add_image(step + '/target 2', target[1], self.epoch)
+        self.summary_writer.add_image(step + '/target 3', target[2], self.epoch)
 
     def train(self):
         for _ in range(self.config.epoch):
@@ -177,16 +174,16 @@ class INGANAgent(object):
             floor = floor.cuda(async=self.config.async_loading)
             
             feat = self.feature(X)
-            pred_cor = self.floor(feat)
+            pred = self.floor(feat)
             
-            loss = self.loss(floor, pred_cor)
+            loss = self.loss(floor, pred)
 
             loss.backward()
             self.opt.step()
             avg_loss.update(loss)
 
             if curr_it == 4:
-                self.record_image(X, pred_cor, floor)
+                self.record_image(X, pred, floor)
 
         tqdm_batch.close()
 
@@ -207,14 +204,14 @@ class INGANAgent(object):
                 floor = floor.cuda(async=self.config.async_loading)
 
                 feat = self.feature(X)
-                pred_cor = self.floor(feat)
+                pred = self.floor(feat)
 
-                loss = self.loss(floor, pred_cor)
+                loss = self.loss(floor, pred)
 
                 avg_loss.update(loss)
 
                 if curr_it == 2:
-                    self.record_image(X, pred_cor, floor, 'test')
+                    self.record_image(X, pred, floor, 'test')
 
             tqdm_batch.close()
 
