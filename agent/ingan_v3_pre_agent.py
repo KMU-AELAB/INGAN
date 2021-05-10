@@ -12,7 +12,7 @@ from torchvision import transforms
 from tensorboardX import SummaryWriter
 
 from graph.model.horizon_base import HorizonBase, Corner
-from graph.loss.hourglass_loss import HourglassLossV2 as Loss
+from graph.loss.horizon_base_loss import HorizonBaseLoss as Loss
 from data.dataset import INGAN_DatasetV3 as INGAN_Dataset
 
 from utils.metrics import AverageMeter
@@ -67,7 +67,7 @@ class INGANAgent(object):
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt, mode='min', factor=0.8, cooldown=20)
 
         # initialize train counter
-        self.epoch = 0
+        self.epoch = 265
         self.accumulate_iter = 0
         self.total_iter = (len(self.dataset) + self.config.batch_size - 1) // self.config.batch_size
 
