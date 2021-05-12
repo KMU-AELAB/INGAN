@@ -87,16 +87,14 @@ class INGAN_DatasetV2(Dataset):
 
 
 class INGAN_DatasetV3(Dataset):
-    def __init__(self, config, torchvision_transform, is_test=False, is_pretrain=False):
+    def __init__(self, config, torchvision_transform, list_file_name, is_pretrain=False):
         self.root_dir = config.root_path
         self.config = config
         self.transform = torchvision_transform
         self.is_pretrain = is_pretrain
+        self.list_file_name = list_file_name
 
-        if is_test:
-            tmp_list = open(os.path.join(self.root_dir, config.data_path, 'test_list.txt')).readlines()
-        else:
-            tmp_list = open(os.path.join(self.root_dir, config.data_path, 'train_list.txt')).readlines()
+        tmp_list = open(os.path.join(self.root_dir, config.data_path, self.list_file_name)).readlines()
         self.data_list = [[i.split()[0], float(i.split()[1])] for i in tmp_list]
 
     def __len__(self):
@@ -130,31 +128,15 @@ class INGAN_DatasetV3(Dataset):
         data = transforms.RandomErasing(p=0.5, scale=(0.02, 0.04), ratio=(0.5, 1.5))(data)
 
         if self.is_pretrain:
-#             stretch = random.random() < 0.5
-            corner = np.load(os.path.join(self.root_dir, self.config.data_path, 'corner', self.data_list[idx][0] + '.npy'))
+            corner = np.load(os.path.join(self.root_dir, self.config.data_path,
+                                          'corner', self.data_list[idx][0] + '.npy'))
             corner = Image.fromarray(corner)
             corner = transforms.Resize((1, 1024))(corner)
 
             if flip:
                 corner = transforms.RandomHorizontalFlip(p=1.0)(corner)
-
             corner = transforms.ToTensor()(corner)
-
             corner = torch.roll(corner, r_size, dims=2)
-
-#             if stretch:
-#                 xmin, ymin, xmax, ymax = util.cor2xybound(corner)
-#                 kx = np.random.uniform(1.0, 2.)
-#                 ky = np.random.uniform(1.0, 2.)
-#                 if np.random.randint(2) == 0:
-#                     kx = max(1 / kx, min(0.5 / xmin, 1.0))
-#                 else:
-#                     kx = min(kx, max(10.0 / xmax, 1.0))
-#                 if np.random.randint(2) == 0:
-#                     ky = max(1 / ky, min(0.5 / ymin, 1.0))
-#                 else:
-#                     ky = min(ky, max(10.0 / ymax, 1.0))
-#                 data, corner = util.panostretch.pano_stretch(data, corner, kx, ky)
 
             return {'X': data, 'corner': corner}
 
