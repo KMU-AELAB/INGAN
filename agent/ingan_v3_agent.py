@@ -51,7 +51,7 @@ class INGANAgent(object):
         self.assistant_dataloader = DataLoader(self.assistant_dataset, batch_size=self.batch_size, shuffle=False,
                                                num_workers=2, pin_memory=self.config.pin_memory,
                                                collate_fn=self.assistant_collate_function)
-        self.assistant_dataset_test = INGAN_Dataset(self.config, self.torchvision_transform, 'test_list.txt')
+        self.assistant_dataset_test = INGAN_Dataset(self.config, self.torchvision_transform, 'test_list.txt', True)
         self.assistant_testloader = DataLoader(self.dataset_test, batch_size=self.batch_size, shuffle=False,
                                                num_workers=1, pin_memory=self.config.pin_memory,
                                                collate_fn=self.collate_function)

@@ -40,11 +40,11 @@ class INGANAgent(object):
         self.logger = set_logger('train_epoch.log')
 
         # define dataloader
-        self.dataset = INGAN_Dataset(self.config, self.torchvision_transform, False, True)
+        self.dataset = INGAN_Dataset(self.config, self.torchvision_transform, 'corner_train_list.txt', True)
         self.dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers=2,
                                      pin_memory=self.config.pin_memory, collate_fn=self.collate_function)
 
-        self.dataset_test = INGAN_Dataset(self.config, self.torchvision_transform, True, True)
+        self.dataset_test = INGAN_Dataset(self.config, self.torchvision_transform, 'test_list.txt', True)
         self.testloader = DataLoader(self.dataset_test, batch_size=self.batch_size, shuffle=False, num_workers=1,
                                      pin_memory=self.config.pin_memory, collate_fn=self.collate_function)
 
